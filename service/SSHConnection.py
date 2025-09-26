@@ -2,7 +2,6 @@ import paramiko
 import os
 import sys
 import socket
-from dotenv import load_dotenv
 import time
 import pandas as pd
 import re
@@ -222,8 +221,15 @@ def reset_port_poe(config, port_number, timeout=10):
                 output = shell.recv(4096).decode('utf-8')
                 print(f"Output: {output}")
         
-        # Wait a bit before enabling
-        time.sleep(3)
+        # Wait a bit before enabling (environment variables loaded at app startup)
+        sleep_duration = os.getenv('SLEEP_DURATION_BEFORE_ENABLE_IN_SECOND', '2')  # Default to 2 seconds
+        try:
+            sleep_seconds = float(sleep_duration)
+        except (ValueError, TypeError):
+            sleep_seconds = 2.0  # Default fallback
+        print(f"Waiting for {sleep_seconds} seconds before enabling...")
+        time.sleep(sleep_seconds)
+        
         
         # Execute enable commands
         print("\n--- Enabling PoE Port ---")

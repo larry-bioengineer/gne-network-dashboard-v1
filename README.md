@@ -11,17 +11,18 @@ A Flask-based web application for automated SSH management of network switches, 
 
 ## Quick Start
 
-### Option 1: Using the Automated Setup (Windows)
+### Option 1: Using the Automated Setup
 
 1. Download Python [here](https://www.python.org/downloads/)
+2. Download Git [here](https://git-scm.com/downloads)
 
-1. **Clone the repository:**
+2. **Clone the repository:**
    ```bash
    git clone <repository-url>
    cd SSH-Automation-Server
    ```
 
-2. **Run the automated setup:**
+3. **Run the automated setup:**
 
    - **On Windows:** Double-click `START_ME.bat`
    - **On macOS/Linux:** Open a terminal and run:
