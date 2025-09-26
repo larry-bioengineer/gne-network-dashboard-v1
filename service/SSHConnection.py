@@ -5,6 +5,58 @@ import socket
 from dotenv import load_dotenv
 import time
 import pandas as pd
+import re
+
+
+def extract_ip_address(text):
+    """
+    Extract IP address from text using a robust detection method.
+    Handles various formats like:
+    - "BOA1FPOE2 10.12.0.5"
+    - "Switch-01 192.168.1.100"
+    - "10.12.0.5" (IP only)
+    - "10.12.0.5:22" (IP with port)
+    - Multiple IPs (returns first valid IPv4)
+    
+    Args:
+        text: String that may contain an IP address
+        
+    Returns:
+        str: The first valid IPv4 address found
+        
+    Raises:
+        ValueError: If no valid IP address is found or text is empty
+    """
+    if not text or pd.isna(text):
+        raise ValueError("Empty or None IP address value")
+    
+    # Convert to string if not already
+    text = str(text).strip()
+    
+    # Regular expression for IPv4 addresses with improved pattern
+    # This pattern handles IPs in various contexts and formats
+    ipv4_pattern = r'\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b'
+    
+    # Find all IPv4 addresses in the text
+    ip_matches = re.findall(ipv4_pattern, text)
+    
+    if not ip_matches:
+        # Try a more flexible approach - look for IP patterns even without word boundaries
+        flexible_pattern = r'(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)'
+        ip_matches = re.findall(flexible_pattern, text)
+        
+    if not ip_matches:
+        raise ValueError(f"No valid IP address found in: {text}")
+    
+    # Use the first match found
+    first_ip = ip_matches[0]
+    
+    # Additional validation - verify it's a properly formatted IP using socket
+    try:
+        socket.inet_aton(first_ip)
+        return first_ip
+    except socket.error:
+        raise ValueError(f"Invalid IP address format: {first_ip}")
 
 
 def connect_ssh(config, timeout=10):
@@ -281,22 +333,39 @@ def retrieve_ssh_info_from_config(locName):
     """
     print(f"Retrieving port from config for {locName}")
     df = pd.read_excel('config_file/data.xlsx', sheet_name='Port assignment')
-    df_clean = df.dropna(subset=['Location', 'IP', 'Switch port'])
+    df_clean = df.dropna(subset=['Location', 'SSH IP', 'Switch port'])
     location_data = df_clean[df_clean['Location'] == locName]
     if location_data.empty:
         return None
+    
+    # process IP as it may have additional strings (e.g. BOA1FPOE2 10.12.0.5)
+    try:
+        ip_raw = location_data['SSH IP'].iloc[0]
+        ip = extract_ip_address(ip_raw)
+    except ValueError as e:
+        print(f"Error extracting IP address: {e}")
+        return None
+    except Exception as e:
+        print(f"Unexpected error during IP extraction: {e}")
+        return None
+    
 
-    print(f"Location data: {location_data}")
+    # process switch port as only need the port number instead of the full port name
+    switch_port = location_data['Switch port'].iloc[0]
+    switch_port = switch_port.split('/')[-1]
+
+    print("SSH INFO:")
     print({
-        "hostname": location_data['IP'].iloc[0],
+        "locName": locName,
+        "hostname": ip,
         "port": 22,
-        "target_port": location_data['Switch port'].iloc[0]
+        "target_port": switch_port
     })
 
     return {
-        "hostname": location_data['IP'].iloc[0],
+        "hostname": ip,
         "port": 22,
-        "target_port": location_data['Switch port'].iloc[0]
+        "target_port": switch_port
     }
 
 
