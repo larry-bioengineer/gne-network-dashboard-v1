@@ -4,7 +4,7 @@ import sys
 import socket
 from dotenv import load_dotenv
 import time
-
+import pandas as pd
 
 
 def connect_ssh(config, timeout=10):
@@ -267,13 +267,36 @@ def main(hostname, username, password, port):
     # Execute port reset
     connect_ssh(config)
 
-def retrieve_ssh_info_from_config(ip):
-    print(f"Retrieving port from config for {ip}")
+def retrieve_ssh_info_from_config(locName):
+    """
+        Match against data.xlsx > Port assignment sheet to find the relevant SSH IP and Switch port
+
+        Param:
+            locName: The location name to match against
+
+        Return:
+            hostname: The IP address of the network switch
+            port: The SSH port of the network switch
+            target_port: The port to reset
+    """
+    print(f"Retrieving port from config for {locName}")
+    df = pd.read_excel('config_file/data.xlsx', sheet_name='Port assignment')
+    df_clean = df.dropna(subset=['Location', 'IP', 'Switch port'])
+    location_data = df_clean[df_clean['Location'] == locName]
+    if location_data.empty:
+        return None
+
+    print(f"Location data: {location_data}")
+    print({
+        "hostname": location_data['IP'].iloc[0],
+        "port": 22,
+        "target_port": location_data['Switch port'].iloc[0]
+    })
 
     return {
-        "hostname": "10.1.1.2",
+        "hostname": location_data['IP'].iloc[0],
         "port": 22,
-        "target_port": 16
+        "target_port": location_data['Switch port'].iloc[0]
     }
 
 

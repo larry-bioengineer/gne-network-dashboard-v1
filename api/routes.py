@@ -107,6 +107,10 @@ def get_ip_and_location():
     """
     try:
         df = pd.read_excel('config_file/data.xlsx', sheet_name='Hardware list')
+
+        # Return error if Location or IP is not found
+        if 'Location' not in df.columns or 'IP' not in df.columns:
+            return jsonify({'error': 'Location or IP column not found in data file'}), 400
         
         # Filter out NaN values to prevent JSON serialization errors
         df_clean = df.dropna(subset=['Location', 'IP'])
