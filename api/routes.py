@@ -96,7 +96,7 @@ def ping():
         return jsonify({'error': 'Interface is required'}), 400
 
     # ping the interface
-    ping_result = subprocess.run(['ping', '-c', '4', interface], capture_output=True, text=True)
+    ping_result = subprocess.run(['ping', interface], capture_output=True, text=True)
     
     return jsonify({'result': ping_result.stdout})
 
@@ -155,7 +155,7 @@ def ping_specific_location():
         target_ip = location_data['IP'].iloc[0]
         
         # Ping the specific IP
-        ping_result = subprocess.run(['ping', '-c', '4', target_ip], capture_output=True, text=True)
+        ping_result = subprocess.run(['ping', target_ip], capture_output=True, text=True)
         
         return jsonify({
             'result': ping_result.stdout,
@@ -193,7 +193,7 @@ def ping_sse():
             
             # Start ping process
             ping_process = subprocess.Popen(
-                ['ping', '-c', str(count), interface],
+                ['ping', interface],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
@@ -272,7 +272,7 @@ def ping_sse_location():
             
             # Start ping process
             ping_process = subprocess.Popen(
-                ['ping', '-c', str(count), target_ip],
+                ['ping', target_ip],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
