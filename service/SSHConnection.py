@@ -332,40 +332,72 @@ def retrieve_ssh_info_from_config(locName):
             target_port: The port to reset
     """
     print(f"Retrieving port from config for {locName}")
-    df = pd.read_excel('config_file/data.xlsx', sheet_name='Port assignment')
-    df_clean = df.dropna(subset=['Location', 'SSH IP', 'Switch port'])
-    location_data = df_clean[df_clean['Location'] == locName]
-    if location_data.empty:
-        return None
-    
-    # process IP as it may have additional strings (e.g. BOA1FPOE2 10.12.0.5)
     try:
-        ip_raw = location_data['SSH IP'].iloc[0]
-        ip = extract_ip_address(ip_raw)
-    except ValueError as e:
-        print(f"Error extracting IP address: {e}")
-        return None
+        df = pd.read_excel('config_file/data.xlsx', sheet_name='Port assignment')
+        
+        # Check which columns exist in the dataframe
+        available_columns = df.columns.tolist()
+        print(f"Available columns: {available_columns}")
+        
+        # Check for required columns before filtering
+        required_columns = ['Location', 'SSH IP', 'Switch Port']
+        missing_columns = [col for col in required_columns if col not in available_columns]
+        
+        if missing_columns:
+            print(f"Missing required columns: {missing_columns}")
+            return None
+        
+        # Try different column name variations in case actual names differ
+        ssh_ip_col = 'SSH IP'
+        switch_port_col = 'Switch Port'
+        
+        # Check for alternate naming patterns
+        for col in available_columns:
+            if 'ssh' in col.lower() and ('ip' in col.lower() or 'address' in col.lower()):
+                ssh_ip_col = col
+            if 'switch' in col.lower() and 'port' in col.lower():
+                switch_port_col = col
+        
+        # Create list of columns for dropna operation
+        drop_nan_columns = ['Location', ssh_ip_col, switch_port_col]
+        df_clean = df.dropna(subset=drop_nan_columns)
+        location_data = df_clean[df_clean['Location'] == locName]
+        
+        if location_data.empty:
+            return None
+        
+        # process IP as it may have additional strings (e.g. BOA1FPOE2 10.12.0.5)
+        try:
+            ip_raw = location_data[ssh_ip_col].iloc[0]
+            ip = extract_ip_address(ip_raw)
+        except ValueError as e:
+            print(f"Error extracting IP address: {e}")
+            return None
+        except Exception as e:
+            print(f"Unexpected error during IP extraction: {e}")
+            return None
+        
+        # process switch port as only need the port number instead of the full port name
+        switch_port = location_data[switch_port_col].iloc[0]
+        switch_port = str(switch_port).split('/')[-1]
+
+        print("SSH INFO:")
+        print({
+            "locName": locName,
+            "hostname": ip,
+            "port": 22,
+            "target_port": switch_port
+        })
+
+        return {
+            "hostname": ip,
+            "port": 22,
+            "target_port": switch_port
+        }
+        
     except Exception as e:
-        print(f"Unexpected error during IP extraction: {e}")
+        print(f"Error reading config file: {e}")
         return None
-    
-    # process switch port as only need the port number instead of the full port name
-    switch_port = location_data['Switch port'].iloc[0]
-    switch_port = switch_port.split('/')[-1]
-
-    print("SSH INFO:")
-    print({
-        "locName": locName,
-        "hostname": ip,
-        "port": 22,
-        "target_port": switch_port
-    })
-
-    return {
-        "hostname": ip,
-        "port": 22,
-        "target_port": switch_port
-    }
 
 
 

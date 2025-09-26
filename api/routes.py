@@ -188,7 +188,8 @@ def ping_sse():
     def generate_ping_events():
         try:
             # Send initial event
-            yield f"data: {json.dumps({'type': 'start', 'message': f'Starting ping to {interface}', 'timestamp': time.time()})}\n\n"
+            message_text = f'Starting ping to {interface}'
+            yield f"data: {json.dumps({'type': 'start', 'message': message_text, 'timestamp': time.time()})}\n\n"
             
             # Start ping process
             ping_process = subprocess.Popen(
@@ -217,7 +218,8 @@ def ping_sse():
                 yield f"data: {json.dumps({'type': 'error', 'message': 'Ping failed', 'timestamp': time.time()})}\n\n"
                 
         except Exception as e:
-            yield f"data: {json.dumps({'type': 'error', 'message': f'Error during ping: {str(e)}', 'timestamp': time.time()})}\n\n"
+            error_message = f'Error during ping: {str(e)}'
+            yield f"data: {json.dumps({'type': 'error', 'message': error_message, 'timestamp': time.time()})}\n\n"
     
     return Response(
         generate_ping_events(),
@@ -258,13 +260,15 @@ def ping_sse_location():
             # Find the IP for the specific location
             location_data = df_clean[df_clean['Location'] == location]
             if location_data.empty:
-                yield f"data: {json.dumps({'type': 'error', 'message': f'Location "{location}" not found', 'timestamp': time.time()})}\n\n"
+                error_message = f'Location "{location}" not found'
+                yield f"data: {json.dumps({'type': 'error', 'message': error_message, 'timestamp': time.time()})}\n\n"
                 return
             
             target_ip = location_data['IP'].iloc[0]
             
             # Send initial event
-            yield f"data: {json.dumps({'type': 'start', 'message': f'Starting ping to {location} ({target_ip})', 'location': location, 'target_ip': target_ip, 'timestamp': time.time()})}\n\n"
+            message_text = f'Starting ping to {location} ({target_ip})'
+            yield f"data: {json.dumps({'type': 'start', 'message': message_text, 'location': location, 'target_ip': target_ip, 'timestamp': time.time()})}\n\n"
             
             # Start ping process
             ping_process = subprocess.Popen(
@@ -288,12 +292,15 @@ def ping_sse_location():
             
             # Send completion event
             if ping_process.returncode == 0:
-                yield f"data: {json.dumps({'type': 'complete', 'message': f'Ping to {location} completed successfully', 'location': location, 'target_ip': target_ip, 'timestamp': time.time()})}\n\n"
+                success_message = f'Ping to {location} completed successfully'
+                yield f"data: {json.dumps({'type': 'complete', 'message': success_message, 'location': location, 'target_ip': target_ip, 'timestamp': time.time()})}\n\n"
             else:
-                yield f"data: {json.dumps({'type': 'error', 'message': f'Ping to {location} failed', 'location': location, 'target_ip': target_ip, 'timestamp': time.time()})}\n\n"
+                error_message = f'Ping to {location} failed'
+                yield f"data: {json.dumps({'type': 'error', 'message': error_message, 'location': location, 'target_ip': target_ip, 'timestamp': time.time()})}\n\n"
                 
         except Exception as e:
-            yield f"data: {json.dumps({'type': 'error', 'message': f'Error during ping: {str(e)}', 'timestamp': time.time()})}\n\n"
+            error_message = f'Error during ping: {str(e)}'
+            yield f"data: {json.dumps({'type': 'error', 'message': error_message, 'timestamp': time.time()})}\n\n"
     
     return Response(
         generate_ping_events(),
@@ -313,7 +320,7 @@ def reset_port():
     
     Args:
         request.json (dict): JSON payload containing:
-            - ip (str, required): The IP address of the network switch
+            - locName (str, required): The location name to reset the port for
             - port (int, optional): The port number to reset (e.g., 16 for ge-0/0/16). 
                                    Defaults to 22 if not provided.
             - timeout (int, optional): Connection timeout in seconds. Defaults to 10.
@@ -421,8 +428,11 @@ def reset_port():
             )
             return jsonify(response.to_dict()), 500
         
+        # Store the target_port before overwriting config
+        target_port = config['target_port']
+        
         # Create SSH configuration
-        config = {
+        ssh_config = {
             'hostname': config['hostname'],
             'username': ssh_username,
             'password': ssh_password,
@@ -430,27 +440,27 @@ def reset_port():
         }
         
         # Execute port reset with timeout
-        success = reset_port_poe(config, config['target_port'], timeout)
+        success = reset_port_poe(ssh_config, target_port, timeout)
         
         if success:
             response = ResponseModel(   
                 success=True,
-                message=f"Port ge-0/0/{config['target_port']} reset successfully for {locName}",
+                message=f"Port ge-0/0/{target_port} reset successfully for {locName}",
                 data={
                     "locName": locName,
-                    "port": config['target_port'],
+                    "port": target_port,
                     "status": f"reset_completed for {locName}"
                 }
             )
             return jsonify(response.to_dict())
         else:
             # Perform SSH connection diagnostics
-            diagnostics = analyze_ssh_error(config['hostname'], ssh_port, timeout)
+            diagnostics = analyze_ssh_error(ssh_config['hostname'], ssh_port, timeout)
             
             # Determine error type based on diagnostics
             if diagnostics["hostname_resolution"] == "failed":
                 error_type = "DNS_RESOLUTION_FAILED"
-                error_message = f"🔍 Cannot resolve hostname/IP: {config['hostname']}. Please verify the IP address is correct."
+                error_message = f"🔍 Cannot resolve hostname/IP: {ssh_config['hostname']}. Please verify the IP address is correct."
             elif diagnostics["ssh_port_open"] == "closed":
                 error_type = "SSH_PORT_CLOSED"
                 error_message = f"🚫 SSH connection failed: Port {ssh_port} is closed or filtered. SSH service may not be running."
@@ -466,7 +476,7 @@ def reset_port():
                 message=error_message,
                 data={
                     "locName": locName,
-                    "port": config['target_port'],
+                    "port": target_port,
                     "ssh_port": ssh_port,
                     "timeout": timeout,
                     "status": "reset_failed",
@@ -477,15 +487,39 @@ def reset_port():
             return jsonify(response.to_dict()), 500
             
     except Exception as e:
-        # Perform basic diagnostics even for unexpected errors
-        diagnostics = analyze_ssh_error(config['hostname'], int(ssh_port) if ssh_port else 22, timeout)
+        # Handle the case where config might not be initialized
+        diagnostics = None
+        port_number = None
+        hostname = None
+        
+        try:
+            if 'ssh_config' in locals() and ssh_config:
+                hostname = ssh_config['hostname']
+                ssh_port = ssh_config['port'] if 'port' in ssh_config else 22
+                diagnostics = analyze_ssh_error(hostname, int(ssh_port) if ssh_port else 22, timeout)
+                port_number = target_port if 'target_port' in locals() else None
+            elif 'config' in locals() and config:
+                hostname = config['hostname']
+                port_number = config['target_port']
+                ssh_port = config['port'] if 'port' in config else 22
+                diagnostics = analyze_ssh_error(hostname, int(ssh_port) if ssh_port else 22, timeout)
+            else:
+                # Use the retrieved config data for diagnostics
+                retrieved_config = retrieve_ssh_info_from_config(locName)
+                if retrieved_config:
+                    hostname = retrieved_config['hostname']
+                    port_number = retrieved_config['target_port']
+                    diagnostics = analyze_ssh_error(hostname, retrieved_config['port'], timeout)
+        except:
+            # If we can't get diagnostics, just proceed without them
+            pass
         
         response = ResponseModel(
             success=False,
             message=f"❌ Unexpected error during port reset: {str(e)}",
             data={
                 "locName": locName,
-                "port": config['target_port'],
+                "port": port_number,
                 "status": "error",
                 "error_type": "UNEXPECTED_ERROR",
                 "diagnostics": diagnostics

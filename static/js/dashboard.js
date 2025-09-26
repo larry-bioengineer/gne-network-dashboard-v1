@@ -330,8 +330,7 @@ async function resetPort(ip, location, button) {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                ip: ip,
-                port: 22  // Default port, can be made configurable
+                locName: location
             })
         });
         
@@ -341,7 +340,7 @@ async function resetPort(ip, location, button) {
             outputDiv.innerHTML = `
                 <div class="reset-success">
                     <strong>✓ Port Reset Successful</strong><br>
-                    <span class="reset-details">IP: ${data.data.ip}</span><br>
+                    <span class="reset-details">Location: ${data.data.locName}</span><br>
                     <span class="reset-details">Port: ge-0/0/${data.data.port}</span><br>
                     <span class="reset-details">Status: ${data.data.status}</span>
                 </div>
