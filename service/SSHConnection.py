@@ -349,7 +349,6 @@ def retrieve_ssh_info_from_config(locName):
         print(f"Unexpected error during IP extraction: {e}")
         return None
     
-
     # process switch port as only need the port number instead of the full port name
     switch_port = location_data['Switch port'].iloc[0]
     switch_port = switch_port.split('/')[-1]
