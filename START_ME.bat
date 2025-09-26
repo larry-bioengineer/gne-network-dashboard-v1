@@ -35,33 +35,100 @@ if not exist "config_file\data.xlsx" (
 
 :: Check if venv directory exists
 if not exist "venv" (
-    echo ERROR: Virtual environment 'venv' not found!
-    echo Please create a virtual environment first.
-    pause
-    exit /b 1
+    echo Virtual environment 'venv' not found!
+    echo Creating virtual environment...
+    python -m venv venv
+    if %errorlevel% neq 0 (
+        echo ERROR: Failed to create virtual environment!
+        echo Please ensure Python is installed and try again.
+        pause
+        exit /b 1
+    )
+    echo ✓ Virtual environment created
+    
+    :: Activate the newly created virtual environment immediately
+    echo Activating new virtual environment...
+    call venv\Scripts\activate.bat
+    if %errorlevel% neq 0 (
+        echo ERROR: Failed to activate virtual environment!
+        pause
+        exit /b 1
+    )
+    echo ✓ Virtual environment activated
+    
+    :: Install dependencies for the newly created virtual environment
+    echo.
+    echo Installing dependencies...
+    pip install --upgrade pip
+    pip install -r requirements.txt
+    if %errorlevel% neq 0 (
+        echo ERROR: Dependencies installation failed!
+        echo Please check your internet connection and try again.
+        pause
+        exit /b 1
+    )
+    echo ✓ All dependencies installed successfully
 ) else (
     echo ✓ Virtual environment found
+    
+    :: Activate existing virtual environment
+    echo Activating virtual environment...
+    call venv\Scripts\activate.bat
+    if %errorlevel% neq 0 (
+        echo ERROR: Failed to activate virtual environment!
+        pause
+        exit /b 1
+    )
+    echo ✓ Virtual environment activated
+    
+    :: Install/update dependencies for existing virtual environment
+    echo.
+    echo Updating dependencies...
+    pip install -r requirements.txt
+    if %errorlevel% neq 0 (
+        echo ERROR: Dependencies installation failed!
+        echo Please check your internet connection and try again.
+        pause
+        exit /b 1
+    )
+    echo ✓ Dependencies updated successfully
 )
 
-:: Activate virtual environment
-echo Activating virtual environment...
-call venv\Scripts\activate.bat
-if %errorlevel% neq 0 (
-    echo ERROR: Failed to activate virtual environment!
+:: Verify dependencies before starting Flask
+echo.
+echo Verifying dependencies...
+
+:: Check if virtual environment python exists
+if not exist "venv\Scripts\python.exe" (
+    echo ERROR: Virtual environment Python executable not found!
     pause
     exit /b 1
 )
-echo ✓ Virtual environment activated
 
-:: Install dependencies if needed
-echo.
-echo Checking dependencies...
-pip install -r requirements.txt >nul 2>&1
+echo Checking Flask...
+venv\Scripts\python.exe -c "import flask" >nul 2>&1
+if %errorlevel% neq 0 (
+    echo ERROR: Flask not available - terminating
+    pause
+    exit /b 1
+)
+
+echo Checking Paramiko...
+venv\Scripts\python.exe -c "import paramiko" >nul 2>&1
+if %errorlevel% neq 0 (
+    echo ERROR: Paramiko not available - terminating
+    pause
+    exit /b 1
+)
+
+echo ✓ All critical dependencies verified
 
 :: Run the Flask application
 echo.
 echo Starting Flask application...
-start /b python main.py
+
+:: Use the virtual environment's Python to run the Flask app
+start /b venv\Scripts\python.exe main.py
 
 :: Wait a moment for the server to start
 timeout /t 3 /nobreak >nul
