@@ -13,6 +13,8 @@ A Flask-based web application for automated SSH management of network switches, 
 
 ### Option 1: Using the Automated Setup (Windows)
 
+1. Download Python [here](https://www.python.org/downloads/)
+
 1. **Clone the repository:**
    ```bash
    git clone <repository-url>
