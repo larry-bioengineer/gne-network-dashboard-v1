@@ -7,8 +7,20 @@ if not exist ".env" (
     echo WARNING: .env file not found!
     echo Continuing without .env file...
     echo.
+    set SERVER_PORT=5000
 ) else (
     echo ✓ .env file found
+    :: Load environment variables from .env file
+    for /f "usebackq tokens=*" %%i in (".env") do (
+        for /f "tokens=1,* delims==" %%a in ("%%i") do (
+            set %%a=%%b
+        )
+    )
+)
+
+:: Set default port if SERVER_PORT is not defined
+if not defined SERVER_PORT (
+    set SERVER_PORT=5000
 )
 
 :: Check if config_file/data.xlsx exists
@@ -54,13 +66,13 @@ start /b python main.py
 :: Wait a moment for the server to start
 timeout /t 3 /nobreak >nul
 
-:: Open browser to 127.0.0.1:5000
-echo Opening browser at http://127.0.0.1:5000...
-start http://127.0.0.1:5000
+:: Open browser to 127.0.0.1 with dynamic port
+echo Opening browser at http://127.0.0.1:%SERVER_PORT%...
+start http://127.0.0.1:%SERVER_PORT%
 
 echo.
 echo SSH Automation Server is now running!
-echo You can access it at: http://127.0.0.1:5000
+echo You can access it at: http://127.0.0.1:%SERVER_PORT%
 echo.
 echo Press any key to keep this window open (this won't stop the server)...
 pause >nul

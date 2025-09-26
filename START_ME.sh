@@ -2,13 +2,21 @@
 echo "Starting SSH Automation Server..."
 echo
 
-# Check if .env file exists
+# Load environment variables from .env file
 if [ ! -f ".env" ]; then
     echo "WARNING: .env file not found!"
     echo "Continuing without .env file..."
     echo
+    SERVER_PORT=5000
 else
     echo "✓ .env file found"
+    # Load environment variables from .env file
+    export $(grep -v '^#' .env | xargs)
+fi
+
+# Set default port if SERVER_PORT is not defined
+if [ -z "$SERVER_PORT" ]; then
+    SERVER_PORT=5000
 fi
 
 # Check if config_file/data.xlsx exists
@@ -55,13 +63,13 @@ SERVER_PID=$!
 # Wait a moment for the server to start
 sleep 3
 
-# Open browser to 127.0.0.1:5000
-echo "Opening browser at http://127.0.0.1:5000..."
-open http://127.0.0.1:5000
+# Open browser to 127.0.0.1 with dynamic port
+echo "Opening browser at http://127.0.0.1:$SERVER_PORT..."
+open http://127.0.0.1:$SERVER_PORT
 
 echo
 echo "SSH Automation Server is now running!"
-echo "You can access it at: http://127.0.0.1:5000"
+echo "You can access it at: http://127.0.0.1:$SERVER_PORT"
 echo
 echo "Press any key to keep this window open (this won't stop the server)..."
 read -n1 -s
