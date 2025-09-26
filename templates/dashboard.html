@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SSH Automation Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style/dashboard.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>SSH Automation Dashboard</h1>
+        
+        <button class="refresh-btn" onclick="loadData()">Refresh Data</button>
+        
+        <div class="search-container">
+            <input type="text" id="searchInput" class="search-input" placeholder="Search by location name..." onkeyup="filterTable()">
+            <button id="clearBtn" class="clear-btn" onclick="clearFilter()" disabled>Clear Filter</button>
+        </div>
+        
+        <div id="loading" class="loading">
+            Loading IP and location data...
+        </div>
+        
+        <div id="error" class="error" style="display: none;"></div>
+        
+        <table id="dataTable" style="display: none;">
+            <thead>
+                <tr>
+                    <th>Location</th>
+                    <th>IP Address</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody id="tableBody">
+            </tbody>
+        </table>
+        
+        <div id="noResults" class="no-results">
+            No locations found matching your search criteria.
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+</body>
+</html>
