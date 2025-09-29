@@ -36,6 +36,9 @@ async function loadData() {
         for (let i = 0; i < locations.length; i++) {
             const row = document.createElement('tr');
             row.innerHTML = `
+                <td class="checkbox-column">
+                    <input type="checkbox" class="location-checkbox" data-location="${locations[i] || ''}" data-ip="${ips[i] || ''}" onchange="updateSelectionCount()">
+                </td>
                 <td>${locations[i] || 'N/A'}</td>
                 <td>${ips[i] || 'N/A'}</td>
                 <td>
@@ -72,6 +75,9 @@ async function loadData() {
             `;
             tableBody.appendChild(row);
         }
+        
+        // Show batch controls after data is loaded
+        document.getElementById('batchControls').style.display = 'block';
         
         // Hide loading, show table
         loading.style.display = 'none';
@@ -239,7 +245,7 @@ function filterTable() {
     let visibleCount = 0;
     
     rows.forEach(row => {
-        const locationCell = row.cells[0]; // Location is in the first column
+        const locationCell = row.cells[1]; // Location is now in the second column (after checkbox)
         const locationText = locationCell.textContent.toLowerCase();
         
         if (searchTerm === '' || locationText.includes(searchTerm)) {
@@ -249,6 +255,9 @@ function filterTable() {
             row.classList.add('filtered');
         }
     });
+    
+    // Update selection count after filtering
+    updateSelectionCount();
     
     // Show/hide no results message
     if (visibleCount === 0 && searchTerm !== '') {
@@ -277,6 +286,9 @@ function clearFilter() {
     rows.forEach(row => {
         row.classList.remove('filtered');
     });
+    
+    // Update selection count after clearing filter
+    updateSelectionCount();
     
     // Hide no results message and show table
     noResults.style.display = 'none';
@@ -371,5 +383,347 @@ async function resetPort(ip, location, button) {
         btnText.textContent = originalText;
         btnIcon.textContent = originalIcon;
         button.classList.remove('loading');
+    }
+}
+
+// Batch operation functions
+function updateSelectionCount() {
+    const allCheckboxes = document.querySelectorAll('.location-checkbox');
+    const checkboxes = Array.from(allCheckboxes).filter(checkbox => 
+        !checkbox.closest('tr').classList.contains('filtered')
+    );
+    const selectedCheckboxes = checkboxes.filter(checkbox => checkbox.checked);
+    const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+    const selectionCount = document.getElementById('selectionCount');
+    const batchPingBtn = document.querySelector('.batch-ping-btn');
+    const batchResetBtn = document.querySelector('.batch-reset-btn');
+    
+    const visibleCount = checkboxes.length;
+    const selectedCount = selectedCheckboxes.length;
+    
+    // Update selection count display
+    selectionCount.textContent = `${selectedCount} selected`;
+    
+    // Update select all checkbox state
+    if (selectedCount === 0) {
+        selectAllCheckbox.indeterminate = false;
+        selectAllCheckbox.checked = false;
+    } else if (selectedCount === visibleCount) {
+        selectAllCheckbox.indeterminate = false;
+        selectAllCheckbox.checked = true;
+    } else {
+        selectAllCheckbox.indeterminate = true;
+    }
+    
+    // Enable/disable batch action buttons
+    const hasSelection = selectedCount > 0;
+    batchPingBtn.disabled = !hasSelection;
+    batchResetBtn.disabled = !hasSelection;
+}
+
+function toggleSelectAll() {
+    const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+    const allCheckboxes = document.querySelectorAll('.location-checkbox');
+    const checkboxes = Array.from(allCheckboxes).filter(checkbox => 
+        !checkbox.closest('tr').classList.contains('filtered')
+    );
+    
+    checkboxes.forEach(checkbox => {
+        checkbox.checked = selectAllCheckbox.checked;
+    });
+    
+    updateSelectionCount();
+}
+
+function selectAllVisible() {
+    const allCheckboxes = document.querySelectorAll('.location-checkbox');
+    const checkboxes = Array.from(allCheckboxes).filter(checkbox => 
+        !checkbox.closest('tr').classList.contains('filtered')
+    );
+    checkboxes.forEach(checkbox => {
+        checkbox.checked = true;
+    });
+    updateSelectionCount();
+}
+
+function deselectAll() {
+    const allCheckboxes = document.querySelectorAll('.location-checkbox');
+    const checkboxes = Array.from(allCheckboxes).filter(checkbox => 
+        !checkbox.closest('tr').classList.contains('filtered')
+    );
+    checkboxes.forEach(checkbox => {
+        checkbox.checked = false;
+    });
+    updateSelectionCount();
+}
+
+function getSelectedLocations() {
+    const selectedCheckboxes = document.querySelectorAll('.location-checkbox:checked');
+    return Array.from(selectedCheckboxes).map(checkbox => ({
+        location: checkbox.dataset.location,
+        ip: checkbox.dataset.ip
+    }));
+}
+
+async function batchPingSelected() {
+    const selectedLocations = getSelectedLocations();
+    
+    if (selectedLocations.length === 0) {
+        alert('No locations selected');
+        return;
+    }
+    
+    const batchPingBtn = document.querySelector('.batch-ping-btn');
+    const btnText = batchPingBtn.querySelector('.btn-text');
+    const btnIcon = batchPingBtn.querySelector('.btn-icon');
+    const originalText = btnText.textContent;
+    const originalIcon = btnIcon.textContent;
+    
+    // Update button state
+    batchPingBtn.disabled = true;
+    btnText.textContent = `Pinging ${selectedLocations.length} locations...`;
+    btnIcon.textContent = '⏳';
+    batchPingBtn.classList.add('loading');
+    
+    try {
+        // Create a batch results container
+        const batchResultsContainer = createBatchResultsContainer('Batch Live Ping Results');
+        
+        // Create result divs for all locations first
+        for (let i = 0; i < selectedLocations.length; i++) {
+            const location = selectedLocations[i];
+            const resultDiv = document.createElement('div');
+            resultDiv.className = 'batch-result-item';
+            resultDiv.innerHTML = `
+                <div class="batch-result-header">
+                    <strong>${location.location}</strong> (${location.ip})
+                    <span class="batch-result-status" id="status-${i}">Pinging...</span>
+                </div>
+                <div class="batch-result-content" id="content-${i}"></div>
+            `;
+            batchResultsContainer.appendChild(resultDiv);
+        }
+        
+        // Start all pings concurrently (in parallel)
+        const pingPromises = selectedLocations.map((location, i) => 
+            pingLocationForBatch(location.location, location.ip, i)
+        );
+        
+        // Wait for all pings to complete
+        await Promise.all(pingPromises);
+        
+    } catch (err) {
+        console.error('Batch ping error:', err);
+        alert('Error during batch ping: ' + err.message);
+    } finally {
+        // Reset button state
+        batchPingBtn.disabled = false;
+        btnText.textContent = originalText;
+        btnIcon.textContent = originalIcon;
+        batchPingBtn.classList.remove('loading');
+    }
+}
+
+async function batchResetSelected() {
+    const selectedLocations = getSelectedLocations();
+    
+    if (selectedLocations.length === 0) {
+        alert('No locations selected');
+        return;
+    }
+    
+    if (!confirm(`Are you sure you want to reset ports for ${selectedLocations.length} selected locations?`)) {
+        return;
+    }
+    
+    const batchResetBtn = document.querySelector('.batch-reset-btn');
+    const btnText = batchResetBtn.querySelector('.btn-text');
+    const btnIcon = batchResetBtn.querySelector('.btn-icon');
+    const originalText = btnText.textContent;
+    const originalIcon = btnIcon.textContent;
+    
+    // Update button state
+    batchResetBtn.disabled = true;
+    btnText.textContent = `Resetting ${selectedLocations.length} locations...`;
+    btnIcon.textContent = '⏳';
+    batchResetBtn.classList.add('loading');
+    
+    try {
+        // Create a batch results container
+        const batchResultsContainer = createBatchResultsContainer('Batch Reset Port Results');
+        
+        // Create result divs for all locations first
+        for (let i = 0; i < selectedLocations.length; i++) {
+            const location = selectedLocations[i];
+            const resultDiv = document.createElement('div');
+            resultDiv.className = 'batch-result-item';
+            resultDiv.innerHTML = `
+                <div class="batch-result-header">
+                    <strong>${location.location}</strong> (${location.ip})
+                    <span class="batch-result-status" id="status-${i}">Resetting...</span>
+                </div>
+                <div class="batch-result-content" id="content-${i}"></div>
+            `;
+            batchResultsContainer.appendChild(resultDiv);
+        }
+        
+        // Start all resets concurrently (in parallel)
+        const resetPromises = selectedLocations.map((location, i) => 
+            resetPortForBatch(location.location, location.ip, i)
+        );
+        
+        // Wait for all resets to complete
+        await Promise.all(resetPromises);
+        
+    } catch (err) {
+        console.error('Batch reset error:', err);
+        alert('Error during batch reset: ' + err.message);
+    } finally {
+        // Reset button state
+        batchResetBtn.disabled = false;
+        btnText.textContent = originalText;
+        btnIcon.textContent = originalIcon;
+        batchResetBtn.classList.remove('loading');
+    }
+}
+
+function createBatchResultsContainer(title) {
+    // Remove existing batch results if any
+    const existingContainer = document.getElementById('batchResultsContainer');
+    if (existingContainer) {
+        existingContainer.remove();
+    }
+    
+    // Create new batch results container
+    const container = document.createElement('div');
+    container.id = 'batchResultsContainer';
+    container.className = 'batch-results-container';
+    container.innerHTML = `
+        <div class="batch-results-header">
+            <h3>${title}</h3>
+            <button class="close-batch-results" onclick="closeBatchResults()">×</button>
+        </div>
+        <div class="batch-results-content"></div>
+    `;
+    
+    // Insert after the table
+    const table = document.getElementById('dataTable');
+    table.parentNode.insertBefore(container, table.nextSibling);
+    
+    return container.querySelector('.batch-results-content');
+}
+
+function closeBatchResults() {
+    const container = document.getElementById('batchResultsContainer');
+    if (container) {
+        container.remove();
+    }
+}
+
+async function pingLocationForBatch(location, ip, index) {
+    const statusElement = document.getElementById(`status-${index}`);
+    const contentElement = document.getElementById(`content-${index}`);
+    
+    try {
+        const response = await fetch('/api/network/ping_sse_location', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                location: location,
+                count: 4
+            })
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let output = '';
+        
+        while (true) {
+            const { done, value } = await reader.read();
+            
+            if (done) break;
+            
+            const chunk = decoder.decode(value);
+            const lines = chunk.split('\n');
+            
+            for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                    try {
+                        const jsonData = line.substring(6);
+                        const data = JSON.parse(jsonData);
+                        
+                        if (data.type === 'ping_line') {
+                            output += data.data + '\n';
+                            contentElement.innerHTML = `<pre>${output}</pre>`;
+                        } else if (data.type === 'complete') {
+                            statusElement.textContent = '✓ Completed';
+                            statusElement.className = 'batch-result-status success';
+                        } else if (data.type === 'error') {
+                            statusElement.textContent = '✗ Failed';
+                            statusElement.className = 'batch-result-status error';
+                            contentElement.innerHTML = `<div class="error">${data.message}</div>`;
+                        }
+                    } catch (e) {
+                        console.error('Error parsing SSE data:', e);
+                    }
+                }
+            }
+        }
+        
+    } catch (err) {
+        statusElement.textContent = '✗ Error';
+        statusElement.className = 'batch-result-status error';
+        contentElement.innerHTML = `<div class="error">Error: ${err.message}</div>`;
+    }
+}
+
+async function resetPortForBatch(location, ip, index) {
+    const statusElement = document.getElementById(`status-${index}`);
+    const contentElement = document.getElementById(`content-${index}`);
+    
+    try {
+        const response = await fetch('/api/network/reset_port', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                locName: location
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok && data.success) {
+            statusElement.textContent = '✓ Success';
+            statusElement.className = 'batch-result-status success';
+            contentElement.innerHTML = `
+                <div class="success">
+                    <strong>Port Reset Successful</strong><br>
+                    Location: ${data.data.locName}<br>
+                    Port: ge-0/0/${data.data.port}
+                </div>
+            `;
+        } else {
+            statusElement.textContent = '✗ Failed';
+            statusElement.className = 'batch-result-status error';
+            contentElement.innerHTML = `
+                <div class="error">
+                    <strong>Port Reset Failed</strong><br>
+                    Error: ${data.message || 'Unknown error'}
+                </div>
+            `;
+        }
+        
+    } catch (err) {
+        statusElement.textContent = '✗ Error';
+        statusElement.className = 'batch-result-status error';
+        contentElement.innerHTML = `<div class="error">Error: ${err.message}</div>`;
     }
 }

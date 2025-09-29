@@ -29,6 +29,24 @@
             <button id="clearBtn" class="clear-btn" onclick="clearFilter()" disabled>Clear Filter</button>
         </div>
         
+        <div class="batch-controls" id="batchControls" style="display: none;">
+            <div class="batch-selection">
+                <button class="batch-btn select-all-btn" onclick="selectAllVisible()">Select All</button>
+                <button class="batch-btn deselect-all-btn" onclick="deselectAll()">Deselect All</button>
+                <span class="selection-count" id="selectionCount">0 selected</span>
+            </div>
+            <div class="batch-actions">
+                <button class="batch-btn batch-ping-btn" onclick="batchPingSelected()" disabled>
+                    <span class="btn-icon">📺</span>
+                    <span class="btn-text">Live Ping Selected</span>
+                </button>
+                <button class="batch-btn batch-reset-btn" onclick="batchResetSelected()" disabled>
+                    <span class="btn-icon">🔄</span>
+                    <span class="btn-text">Reset Port Selected</span>
+                </button>
+            </div>
+        </div>
+        
         <div id="loading" class="loading">
             Loading IP and location data...
         </div>
@@ -38,6 +56,9 @@
         <table id="dataTable" style="display: none;">
             <thead>
                 <tr>
+                    <th class="checkbox-column">
+                        <input type="checkbox" id="selectAllCheckbox" onchange="toggleSelectAll()">
+                    </th>
                     <th>Location</th>
                     <th>IP Address</th>
                     <th>Action</th>
