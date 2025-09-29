@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SSH Automation</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style/dashboard.css') }}">
+    <style>
+        .automation-container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        
+        .controls-container {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
+        .automation-btn {
+            font-size: 16px;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            color: white;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .automation-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+        
+        .automation-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .automation-btn.reset-all {
+            background-color: #dc3545;
+            background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+        }
+        
+        .automation-btn.reset-all:hover:not(:disabled) {
+            background-color: #c82333;
+        }
+        
+        .automation-btn.reset-down-only {
+            background-color: #fd7e14;
+            background: linear-gradient(135deg, #fd7e14 0%, #e8650e 100%);
+        }
+        
+        .automation-btn.reset-down-only:hover:not(:disabled) {
+            background-color: #e8650e;
+        }
+        
+        .log-container {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 20px;
+            max-height: 500px;
+            overflow-y: auto;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        
+        .log-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #e9ecef;
+        }
+        
+        .log-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #495057;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .clear-log-btn {
+            background-color: #6c757d;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: background-color 0.3s;
+        }
+        
+        .clear-log-btn:hover {
+            background-color: #5a6268;
+        }
+        
+        .log-content {
+            font-size: 12px;
+            line-height: 1.4;
+            color: #212529;
+            min-height: 50px;
+        }
+        
+        .log-line {
+            margin-bottom: 5px;
+            padding: 4px 8px;
+            border-radius: 4px;
+            opacity: 0;
+            animation: fadeIn 0.5s ease-in forwards;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        
+        .log-line.info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border-left: 3px solid #17a2b8;
+        }
+        
+        .log-line.success {
+            background-color: #d4edda;
+            color: #155724;
+            border-left: 3px solid #28a745;
+        }
+        
+        .log-line.warning {
+            background-color: #fff3cd;
+            color: #856404;
+            border-left: 3px solid #ffc107;
+        }
+        
+        .log-line.error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border-left: 3px solid #dc3545;
+        }
+        
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateX(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+        
+        .status-info {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 15px;
+        }
+        
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 14px;
+            color: #495057;
+        }
+        
+        .loading-animation {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #007bff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>SSH Automation Dashboard</h1>
+        
+        <div class="automation-container">
+            <div class="controls-container">
+                <button class="automation-btn reset-down-only" id="resetDownOnlyBtn" onclick="startResetDownOnly()">
+                    <span class="btn-icon">🎯</span>
+                    <span class="btn-text">Reset All Down Port Only</span>
+                </button>
+                
+                <button class="automation-btn reset-all" id="resetAllBtn" onclick="startResetAll()">
+                    <span class="btn-icon">🔄</span>
+                    <span class="btn-text">Reset All</span>
+                </button>
+                
+                <div class="status-info">
+                    <span>Ready to automate network management tasks</span>
+                </div>
+            </div>
+            
+            <div class="log-container">
+                <div class="log-header">
+                    <h3 class="log-title">
+                        <span class="btn-icon">📋</span>
+                        Automation Log
+                    </h3>
+                    <button class="clear-log-btn" onclick="clearLog()">Clear Log</button>
+                </div>
+                <div class="log-content" id="logContent">
+                    <div class="log-line info">System ready for automation operations. Click a button above to begin.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentOperation = null;
+        
+        // Add a log line to the log container
+        function addLogLine(message, type = 'info', timestamp = true) {
+            const logContent = document.getElementById('logContent');
+            const logLine = document.createElement('div');
+            
+            logLine.className = `log-line ${type}`;
+            
+            const timeString = timestamp ? new Date().toLocaleTimeString() : '';
+            const fullMessage = timestamp ? `[${timeString}] ${message}` : message;
+            logLine.textContent = fullMessage;
+            
+            logContent.appendChild(logLine);
+            logContent.scrollTop = logContent.scrollHeight; // Auto-scroll to bottom
+        }
+        
+        // Clear the log
+        function clearLog() {
+            const logContent = document.getElementById('logContent');
+            logContent.innerHTML = '';
+            addLogLine('Log cleared. New automation operations can begin.', 'info');
+        }
+        
+        // Update button state during operations
+        function setButtonState(buttonId, disabled, loading = false) {
+            const button = document.getElementById(buttonId);
+            const icon = button.querySelector('.btn-icon');
+            const text = button.querySelector('.btn-text');
+            
+            button.disabled = disabled;
+            
+            if (loading) {
+                icon.innerHTML = '<div class="loading-animation"></div>';
+                text.textContent = 'Running...';
+            } else {
+                // Reset icons
+                if (buttonId === 'resetDownOnlyBtn') {
+                    icon.textContent = '🎯';
+                    text.textContent = 'Reset All Down Port Only';
+                } else {
+                    icon.textContent = '🔄';
+                    text.textContent = 'Reset All';
+                }
+            }
+        }
+        
+        // Handle reset down port only operation
+        async function startResetDownOnly() {
+            if (confirm('Are you sure you want to reset only DOWN ports? This will ping all devices and only reset those that are unreachable.')) {
+                setButtonState('resetDownOnlyBtn', true, true);
+                currentOperation = 'reset_down_port_only';
+                
+                try {
+                    await resetDownOnlyOperation();
+                } catch (error) {
+                    addLogLine(`Error during reset down port only: ${error.message}`, 'error');
+                } finally {
+                    setButtonState('resetDownOnlyBtn', false, false);
+                    currentOperation = null;
+                }
+            }
+        }
+        
+        // Handle reset all operation
+        async function startResetAll() {
+            if (confirm('Are you sure you want to reset ALL ports? This will reset all devices in your configuration.')) {
+                setButtonState('resetAllBtn', true, true);
+                currentOperation = 'reset_all';
+                
+                try {
+                    await resetAllOperation();
+                } catch (error) {
+                    addLogLine(`Error during reset all: ${error.message}`, 'error');
+                } finally {
+                    setButtonState('resetAllBtn', false, false);
+                    currentOperation = null;
+                }
+            }
+        }
+        
+        // Execute reset down port only with SSE
+        async function resetDownOnlyOperation() {
+            addLogLine('Starting Reset Down Port Only operation...', 'info');
+            
+            try {
+                const response = await fetch('/api/network/reset_down_port_only_sse', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        timeout: 30
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                
+                while (true) {
+                    const { done, value } = await reader.read();
+                    
+                    if (done) break;
+                    
+                    const chunk = decoder.decode(value);
+                    const lines = chunk.split('\n');
+                    
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            try {
+                                const jsonData = line.substring(6);
+                                const data = JSON.parse(jsonData);
+                                
+                                switch(data.type) {
+                                    case 'start':
+                                        addLogLine(data.message, 'info');
+                                        break;
+                                    case 'progress':
+                                    case 'ping_result':
+                                        addLogLine(data.message, data.success ? 'success' : 'warning');
+                                        break;
+                                    case 'reset_attempt':
+                                        addLogLine(`Reset attempt for ${data.location}: ${data.message}`, 'info');
+                                        break;
+                                    case 'reset_success':
+                                        addLogLine(`✓ Successfully reset port for ${data.location}`, 'success');
+                                        break;
+                                    case 'reset_error':
+                                        addLogLine(`✗ Failed to reset ${data.location}: ${data.message}`, 'error');
+                                        break;
+                                    case 'complete':
+                                        addLogLine(data.message, data.success ? 'success' : 'warning');
+                                        break;
+                                    case 'error':
+                                        addLogLine(data.message, 'error');
+                                        break;
+                                    default:
+                                        if (data.message) {
+                                            addLogLine(data.message, 'info');
+                                        }
+                                        break;
+                                }
+                            } catch (e) {
+                                console.error('Error parsing SSE data:', e);
+                            }
+                        }
+                    }
+                }
+                
+            } catch (error) {
+                addLogLine(`Error in reset down port only operation: ${error.message}`, 'error');
+            }
+        }
+        
+        // Execute reset all operation with SSE
+        async function resetAllOperation() {
+            addLogLine('Starting Reset All operation...', 'info');
+            
+            try {
+                const response = await fetch('/api/network/reset_all_locations_sse', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        timeout: 30
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                
+                while (true) {
+                    const { done, value } = await reader.read();
+                    
+                    if (done) break;
+                    
+                    const chunk = decoder.decode(value);
+                    const lines = chunk.split('\n');
+                    
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            try {
+                                const jsonData = line.substring(6);
+                                const data = JSON.parse(jsonData);
+                                
+                                switch(data.type) {
+                                    case 'start':
+                                        addLogLine(data.message, 'info');
+                                        break;
+                                    case 'progress':
+                                    case 'reset_attempt':
+                                        addLogLine(`Resetting ${data.location}...`, 'info');
+                                        break;
+                                    case 'reset_success':
+                                        addLogLine(`✓ Successfully reset ${data.location}`, 'success');
+                                        break;
+                                    case 'reset_error':
+                                        addLogLine(`✗ Failed to reset ${data.location}: ${data.message}`, 'error');
+                                        break;
+                                    case 'complete':
+                                        addLogLine(data.message, data.success ? 'success' : 'warning');
+                                        break;
+                                    case 'error':
+                                        addLogLine(data.message, 'error');
+                                        break;
+                                    default:
+                                        if (data.message) {
+                                            addLogLine(data.message, 'info');
+                                        }
+                                        break;
+                                }
+                            } catch (e) {
+                                console.error('Error parsing SSE data:', e);
+                            }
+                        }
+                    }
+                }
+                
+            } catch (error) {
+                addLogLine(`Error in reset all operation: ${error.message}`, 'error');
+            }
+        }
+    </script>
+</body>
+</html>

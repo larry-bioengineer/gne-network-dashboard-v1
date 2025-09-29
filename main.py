@@ -17,6 +17,10 @@ def home():
 def dashboard():
     return render_template('dashboard.html')
 
+@app.route('/automation')
+def automation():
+    return render_template('automation.html')
+
 if __name__ == '__main__':
     # check if config_file/data.xlsx exists
     if not os.path.exists('config_file/data.xlsx'):

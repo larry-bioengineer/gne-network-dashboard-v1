@@ -13,6 +13,35 @@ from service.SSHConnection import reset_port_poe, retrieve_ssh_info_from_config
 # Create a Blueprint for API routes
 api_bp = Blueprint('api', __name__, url_prefix='/api')
 
+def get_locations_from_data_file():
+    """
+    Get all locations from the data.xlsx file.
+    This is a shared function to avoid duplication between endpoints.
+    
+    Returns:
+        tuple: (success: bool, result: dict or str)
+               - If success=True, result contains {'locations': list, 'df_clean': DataFrame}
+               - If success=False, result contains error message
+    """
+    try:
+        df = pd.read_excel('config_file/data.xlsx', sheet_name='Hardware list')
+        
+        # Return error if Location or IP is not found
+        if 'Location' not in df.columns or 'IP' not in df.columns:
+            return False, "Location or IP column not found in data file"
+        
+        # Filter out NaN values
+        df_clean = df.dropna(subset=['Location', 'IP'])
+        locations = df_clean['Location'].unique().tolist()
+        
+        if not locations:
+            return False, "No locations found in data file"
+        
+        return True, {'locations': locations, 'df_clean': df_clean}
+        
+    except Exception as e:
+        return False, f"Failed to read data file: {str(e)}"
+
 def analyze_ssh_error(ip, port, timeout):
     """
     Analyze potential SSH connection issues and provide diagnostic information
@@ -105,19 +134,18 @@ def get_ip_and_location():
     """
     Get the IP and location from the data.xlsx file
     """
-    try:
-        df = pd.read_excel('config_file/data.xlsx', sheet_name='Hardware list')
-
-        # Return error if Location or IP is not found
-        if 'Location' not in df.columns or 'IP' not in df.columns:
-            return jsonify({'error': 'Location or IP column not found in data file'}), 400
-        
-        # Filter out NaN values to prevent JSON serialization errors
-        df_clean = df.dropna(subset=['Location', 'IP'])
-        
-        return jsonify({'Location': df_clean['Location'].values.tolist(), 'IP': df_clean['IP'].values.tolist()})
-    except Exception as e:
-        return jsonify({'error': f'Failed to read data file: {str(e)}'}), 500
+    success, result = get_locations_from_data_file()
+    
+    if not success:
+        return jsonify({'error': result}), 500
+    
+    # Extract the clean dataframe from the result
+    df_clean = result['df_clean']
+    
+    return jsonify({
+        'Location': df_clean['Location'].values.tolist(), 
+        'IP': df_clean['IP'].values.tolist()
+    })
 
 @api_bp.route('/network/ping_specific_location', methods=['POST'])
 def ping_specific_location():
@@ -316,7 +344,7 @@ def ping_sse_location():
 @api_bp.route('/network/reset_port', methods=['POST'])
 def reset_port():
     """
-    Reset the port of a given IP by disabling and enabling PoE
+    Reset the port of a given location name by disabling and enabling PoE
     
     Args:
         request.json (dict): JSON payload containing:
@@ -330,12 +358,12 @@ def reset_port():
             - success (bool): Whether the operation was successful
             - message (str): Human-readable message describing the result
             - data (dict, optional): Additional data including:
-                - ip (str): The target IP address
+                - locName (str): The location name
                 - port (int): The port number that was reset
                 - status (str): Status of the reset operation
     
     Raises:
-        400: If IP address is missing from request
+        400: If location name is missing from request
         500: If SSH credentials are not configured or invalid
         500: If port reset operation fails
         500: If any other error occurs during execution
@@ -345,23 +373,6 @@ def reset_port():
         - SSH_PASSWORD: SSH password for switch authentication
         - SSH_PORT: SSH port number (optional, defaults to 22)
     
-    Example:
-        Request:
-        {
-            "ip": "192.168.1.1",
-            "port": 16
-        }
-        
-        Response (Success):
-        {
-            "success": true,
-            "message": "Port ge-0/0/16 reset successfully",
-            "data": {
-                "ip": "192.168.1.1",
-                "port": 16,
-                "status": "reset_completed"
-            }
-        }
     """
     try:
         # Load environment variables
@@ -526,3 +537,656 @@ def reset_port():
             }
         )
         return jsonify(response.to_dict()), 500
+
+
+@api_bp.route('/network/reset_all_locations', methods=['POST'])
+def reset_all_locations():
+    """
+    Reset all locations from data.xlsx file
+    
+    Args:
+        request.json (dict, optional): JSON payload containing:
+            - timeout (int, optional): Connection timeout in seconds for each reset
+                Defaults to 10
+    
+    Returns:
+        ResponseModel: JSON response containing:
+            - success (bool): Whether the operation was successful for all locations
+            - message (str): Human-readable summary message
+            - data (dict): Details of the operation including:
+                - successful_locations: List of locations successfully reset
+                - failed_locations: List of locations that failed
+                - total: Total number of locations processed
+                - success_count: Number of successful resets
+                - failed_count: Number of failed resets
+    """
+    try:
+        # Load environment variables first
+        load_dotenv()
+        
+        data = request.json if request.json else {}
+        timeout = data.get('timeout', 10)  # Default timeout of 10 seconds
+        
+        # Validate timeout parameter
+        try:
+            timeout = int(timeout)
+            if timeout <= 0 or timeout > 300:  # Allow 1-300 seconds
+                raise ValueError("Timeout must be between 1 and 300 seconds")
+        except (ValueError, TypeError):
+            response = ResponseModel(
+                success=False,
+                message="Invalid timeout value. Must be an integer between 1 and 300 seconds",
+                data=None
+            )
+            return jsonify(response.to_dict()), 400
+        
+        # Check if SSH credentials are available
+        ssh_username = os.getenv('SSH_USERNAME')
+        ssh_password = os.getenv('SSH_PASSWORD')
+        
+        if not ssh_username or not ssh_password:
+            response = ResponseModel(
+                success=False,
+                message="SSH credentials not configured. Please set SSH_USERNAME and SSH_PASSWORD in .env file",
+                data=None
+            )
+            return jsonify(response.to_dict()), 500
+        
+        # Get all locations from data.xlsx using shared function
+        success, result = get_locations_from_data_file()
+        
+        if not success:
+            response = ResponseModel(
+                success=False,
+                message=result,
+                data=None
+            )
+            return jsonify(response.to_dict()), 500
+        
+        # Extract locations from the result
+        locations = result['locations']
+        
+        # Initialize progress tracking
+        successful_locations = []
+        failed_locations = []
+        total_processed = len(locations)
+        
+        # Reset each location
+        for i, location in enumerate(locations):
+            try:
+                # Use same logic as network/reset_port for each location
+                # Get SSH configuration for this location
+                config = retrieve_ssh_info_from_config(location)
+                
+                if not config:
+                    failed_locations.append({
+                        'location': location,
+                        'error': 'SSH Configuration not found'
+                    })
+                    continue
+                
+                # Create SSH configuration (same as reset_port)
+                ssh_config = {
+                    'hostname': config['hostname'],
+                    'username': ssh_username,
+                    'password': ssh_password,
+                    'port': int(config['port'])
+                }
+                
+                target_port = config['target_port']
+                
+                # Execute port reset (same as reset_port)
+                success = reset_port_poe(ssh_config, target_port, timeout)
+                
+                if success:
+                    successful_locations.append(location)
+                else:
+                    # Perform diagnostics (same as reset_port)
+                    diagnostics = analyze_ssh_error(ssh_config['hostname'], config['port'], timeout)
+                    failed_locations.append({
+                        'location': location,
+                        'error': 'SSH connection or reset failed',
+                        'diagnostics': diagnostics
+                    })
+                
+                # Small delay between resets to avoid overwhelming switches
+                if i < len(locations) - 1:
+                    time.sleep(2)
+                    
+            except Exception as e:
+                failed_locations.append({
+                    'location': location,
+                    'error': str(e)
+                })
+        
+        success_count = len(successful_locations)
+        failed_count = len(failed_locations)
+        
+        # Build response
+        if failed_count == 0:
+            overall_success = True
+            summary_message = f"Successfully reset {success_count} out of {total_processed} locations"
+        else:
+            overall_success = len(successful_locations) > 0  # True if at least one succeeded
+            summary_message = f"Reset operation completed: {success_count} successful, {failed_count} failed out of {total_processed} locations"
+        
+        response = ResponseModel(
+            success=overall_success,
+            message=summary_message,
+            data={
+                'successful_locations': successful_locations,
+                'failed_locations': failed_locations,
+                'total': total_processed,
+                'success_count': success_count,
+                'failed_count': failed_count
+            }
+        )
+        
+        # Return 200 if any success, 500 if all failed
+        status_code = 200 if overall_success else 500
+        return jsonify(response.to_dict()), status_code
+        
+    except Exception as e:
+        response = ResponseModel(
+            success=False,
+            message=f"Unexpected error during reset all operation: {str(e)}",
+            data={'error_type': 'UNEXPECTED_ERROR'}
+        )
+        return jsonify(response.to_dict()), 500
+
+
+@api_bp.route('/network/reset_down_port_only', methods=['POST'])
+def reset_down_port_only():
+    """
+    Go through the data.xlsx. Ping the IP address. If the IP address is not reachable, 
+    reset the port of a given location name by disabling PoE
+    
+    Args:
+        request.json (dict, optional): JSON payload containing:
+            - timeout (int, optional): Connection timeout in seconds for each ping and reset
+                Defaults to 10
+    
+    Returns:
+        ResponseModel: JSON response containing:
+            - success (bool): Whether the operation was successful
+            - message (str): Human-readable message describing the result
+            - data (dict): Details of the operation including:
+                - total_checked: Total number of locations checked
+                - down_locations: List of locations that were unreachable (ping failed)
+                - reset_attempted: Locations where port reset was attempted
+                - reset_successful: Locations successfully reset
+                - reset_failed: Locations where reset failed
+                - not_down: Locations that were reachable (no action needed)
+    
+    """
+    try:
+        # Load environment variables
+        load_dotenv()
+        
+        data = request.json if request.json else {}
+        timeout = data.get('timeout', 10)  # Default timeout of 10 seconds
+        
+        # Validate timeout parameter
+        try:
+            timeout = int(timeout)
+            if timeout <= 0 or timeout > 300:  # Allow 1-300 seconds
+                raise ValueError("Timeout must be between 1 and 300 seconds")
+        except (ValueError, TypeError):
+            response = ResponseModel(
+                success=False,
+                message="Invalid timeout value. Must be an integer between 1 and 300 seconds",
+                data=None
+            )
+            return jsonify(response.to_dict()), 400
+        
+        # Check if SSH credentials are available
+        ssh_username = os.getenv('SSH_USERNAME')
+        ssh_password = os.getenv('SSH_PASSWORD')
+        
+        if not ssh_username or not ssh_password:
+            response = ResponseModel(
+                success=False,
+                message="SSH credentials not configured. Please set SSH_USERNAME and SSH_PASSWORD in .env file",
+                data=None
+            )
+            return jsonify(response.to_dict()), 500
+        
+        # Get all locations from data.xlsx using the shared function
+        success, result = get_locations_from_data_file()
+        
+        if not success:
+            response = ResponseModel(
+                success=False,
+                message=result,
+                data=None
+            )
+            return jsonify(response.to_dict()), 500
+        
+        # Extract locations and dataframe from the result
+        locations = result['locations']
+        df_clean = result['df_clean']
+        
+        # Process all locations
+        total_checked = len(locations)
+        down_locations = []
+        reset_attempted = []
+        reset_successful = []
+        reset_failed = []
+        not_down = []
+        
+        # Check each location
+        for location in locations:
+            try:
+                # Get the IP for this location
+                location_data = df_clean[df_clean['Location'] == location]
+                if location_data.empty:
+                    continue
+                
+                ip_address = location_data['IP'].iloc[0]
+                
+                # Convert to string in case it's not already
+                ip_address = str(ip_address).strip()
+                
+                # Ping the IP address
+                print(f"Pinging {location} at {ip_address}...")
+                ping_result = subprocess.run(
+                    ['ping', '-c', '3', '-W', str(timeout), ip_address], 
+                    capture_output=True, 
+                    text=True,
+                    timeout=timeout + 5  # Add buffer to ping timeout
+                )
+                
+                # Check if ping was successful
+                if ping_result.returncode == 0:
+                    # IP is reachable - no action needed
+                    not_down.append({
+                        'location': location, 
+                        'ip': ip_address,
+                        'status': 'reachable'
+                    })
+                else:
+                    # IP is not reachable - attempt port reset
+                    down_locations.append({
+                        'location': location, 
+                        'ip': ip_address,
+                        'status': 'unreachable'
+                    })
+                    
+                    try:
+                        # Get SSH configuration for this location
+                        config = retrieve_ssh_info_from_config(location)
+                        
+                        if not config:
+                            reset_failed.append({
+                                'location': location,
+                                'error': 'SSH configuration not found'
+                            })
+                        else:
+                            # Create SSH configuration
+                            ssh_config = {
+                                'hostname': config['hostname'],
+                                'username': ssh_username,
+                                'password': ssh_password,
+                                'port': int(config['port'])
+                            }
+                            
+                            target_port = config['target_port']
+                            reset_attempted.append({
+                                'location': location,
+                                'ip': ip_address,
+                                'target_port': target_port
+                            })
+                            
+                            # Execute port reset
+                            success = reset_port_poe(ssh_config, target_port, timeout)
+                            
+                            if success:
+                                reset_successful.append({
+                                    'location': location,
+                                    'ip': ip_address,
+                                    'target_port': target_port,
+                                    'status': 'reset_successful'
+                                })
+                            else:
+                                reset_failed.append({
+                                    'location': location,
+                                    'ip': ip_address,
+                                    'target_port': target_port,
+                                    'error': 'Port reset failed'
+                                })
+                    
+                    except Exception as e:
+                        reset_failed.append({
+                            'location': location,
+                            'error': f'Exception during reset: {str(e)}'
+                        })
+                        
+            except subprocess.TimeoutExpired:
+                # Ping timed out - treat as unreachable
+                down_locations.append({
+                    'location': location, 
+                    'ip': ip_address,
+                    'status': 'ping_timeout'
+                })
+                
+            except Exception as e:
+                # Error during processing
+                reset_failed.append({
+                    'location': location,
+                    'error': f'Error during processing: {str(e)}'
+                })
+        
+        # Build response message
+        successful_resets = len(reset_successful)
+        total_down = len(down_locations)
+        
+        if successful_resets > 0:
+            message = f"Completed port reset scan: {successful_resets} ports reset successfully out of {total_down} unreachable locations"
+        else:
+            message = f"No ports needed resetting: {total_checked} locations checked"
+        
+        # Determine overall success
+        overall_success = len(reset_failed) == 0 or successful_resets > 0
+        status_code = 200 if overall_success else 500
+        
+        response = ResponseModel(
+            success=overall_success,
+            message=message,
+            data={
+                'total_checked': total_checked,
+                'down_locations': down_locations,
+                'reset_attempted': reset_attempted,
+                'reset_successful': reset_successful,
+                'reset_failed': reset_failed,
+                'not_down': not_down
+            }
+        )
+        
+        return jsonify(response.to_dict()), status_code
+        
+    except Exception as e:
+        response = ResponseModel(
+            success=False,
+            message=f"Unexpected error during reset_down_port_only operation: {str(e)}",
+            data={'error_type': 'UNEXPECTED_ERROR'}
+        )
+        return jsonify(response.to_dict()), 500
+
+
+@api_bp.route('/network/reset_down_port_only_sse', methods=['POST'])
+def reset_down_port_only_sse():
+    """
+    SSE version of reset_down_port_only - Stream reset operations in real-time
+    
+    Args:
+        request.json (dict, optional): JSON payload containing:
+            - timeout (int, optional): Connection timeout in seconds for each ping and reset
+                Defaults to 10
+    
+    Returns:
+        Server-Sent Events stream with progress updates
+    """
+    def generate_reset_events():
+        try:
+            # Load environment variables
+            load_dotenv()
+            
+            data = request.json if request.json else {}
+            timeout = data.get('timeout', 10)  # Default timeout of 10 seconds
+            
+            # Validate timeout parameter
+            try:
+                timeout = int(timeout)
+                if timeout <= 0 or timeout > 300:
+                    raise ValueError("Timeout must be between 1 and 300 seconds")
+            except (ValueError, TypeError):
+                yield f"data: {json.dumps({'type': 'error', 'message': 'Invalid timeout value. Must be an integer between 1 and 300 seconds', 'timestamp': time.time()})}\n\n"
+                return
+            
+            # Check if SSH credentials are available
+            ssh_username = os.getenv('SSH_USERNAME')
+            ssh_password = os.getenv('SSH_PASSWORD')
+            
+            if not ssh_username or not ssh_password:
+                yield f"data: {json.dumps({'type': 'error', 'message': 'SSH credentials not configured. Please set SSH_USERNAME and SSH_PASSWORD in .env file', 'timestamp': time.time()})}\n\n"
+                return
+            
+            # Get all locations from data.xlsx using the shared function
+            success, result = get_locations_from_data_file()
+            
+            if not success:
+                yield f"data: {json.dumps({'type': 'error', 'message': result, 'timestamp': time.time()})}\n\n"
+                return
+            
+            # Extract locations and dataframe from the result
+            locations = result['locations']
+            df_clean = result['df_clean']
+            
+            yield f"data: {json.dumps({'type': 'start', 'message': f'Starting Reset Down Port Only operation. Checking {len(locations)} locations...', 'timestamp': time.time()})}\n\n"
+            
+            total_checked = len(locations)
+            down_locations = []
+            reset_successful = []
+            reset_failed = []
+            not_down = []
+            
+            # Check each location
+            for i, location in enumerate(locations):
+                try:
+                    # Get the IP for this location
+                    location_data = df_clean[df_clean['Location'] == location]
+                    if location_data.empty:
+                        continue
+                    
+                    ip_address = location_data['IP'].iloc[0]
+                    ip_address = str(ip_address).strip()
+                    
+                    # Send ping attempt status
+                    yield f"data: {json.dumps({'type': 'progress', 'message': f'Pinging {location} ({ip_address})...', 'location': location, 'timestamp': time.time()})}\n\n"
+                    
+                    # Ping the IP address
+                    ping_result = subprocess.run(
+                        ['ping', '-c', '3', '-W', str(timeout), ip_address], 
+                        capture_output=True, 
+                        text=True,
+                        timeout=timeout + 5
+                    )
+                    
+                    if ping_result.returncode == 0:
+                        # IP is reachable - no action needed
+                        not_down.append({'location': location, 'ip': ip_address})
+                        yield f"data: {json.dumps({'type': 'ping_result', 'success': True, 'message': f'{location} is reachable - no reset needed', 'location': location, 'timestamp': time.time()})}\n\n"
+                    else:
+                        # IP is not reachable - attempt port reset
+                        down_locations.append({'location': location, 'ip': ip_address})
+                        
+                        yield f"data: {json.dumps({'type': 'reset_attempt', 'message': f'{location} is unreachable - attempting port reset', 'location': location, 'timestamp': time.time()})}\n\n"
+                        
+                        try:
+                            # Get SSH configuration
+                            config = retrieve_ssh_info_from_config(location)
+                            
+                            if not config:
+                                reset_failed.append({'location': location, 'error': 'SSH configuration not found'})
+                                yield f"data: {json.dumps({'type': 'reset_error', 'message': 'SSH configuration not found', 'location': location, 'timestamp': time.time()})}\n\n"
+                            else:
+                                # Create SSH configuration
+                                ssh_config = {
+                                    'hostname': config['hostname'],
+                                    'username': ssh_username,
+                                    'password': ssh_password,
+                                    'port': int(config['port'])
+                                }
+                                
+                                target_port = config['target_port']
+                                
+                                # Execute port reset
+                                success = reset_port_poe(ssh_config, target_port, timeout)
+                                
+                                if success:
+                                    reset_successful.append({'location': location, 'ip': ip_address, 'target_port': target_port})
+                                    yield f"data: {json.dumps({'type': 'reset_success', 'message': f'Successfully reset port {target_port}', 'location': location, 'timestamp': time.time()})}\n\n"
+                                else:
+                                    reset_failed.append({'location': location, 'error': 'Port reset failed'})
+                                    yield f"data: {json.dumps({'type': 'reset_error', 'message': 'Port reset failed', 'location': location, 'timestamp': time.time()})}\n\n"
+                        
+                        except Exception as e:
+                            reset_failed.append({'location': location, 'error': f'Exception during reset: {str(e)}'})
+                            yield f"data: {json.dumps({'type': 'reset_error', 'message': f'Exception during reset: {str(e)}', 'location': location, 'timestamp': time.time()})}\n\n"
+                            
+                except subprocess.TimeoutExpired:
+                    down_locations.append({'location': location, 'ip': ip_address})
+                    yield f"data: {json.dumps({'type': 'ping_result', 'success': False, 'message': f'Ping timeout for {location} - treating as unreachable', 'location': location, 'timestamp': time.time()})}\n\n"
+                    
+                except Exception as e:
+                    reset_failed.append({'location': location, 'error': f'Error during processing: {str(e)}'})
+                    yield f"data: {json.dumps({'type': 'reset_error', 'message': f'Processing error: {str(e)}', 'location': location, 'timestamp': time.time()})}\n\n"
+            
+            # Send completion event
+            successful_resets = len(reset_successful)
+            total_down = len(down_locations)
+            
+            if successful_resets > 0:
+                completion_message = f"Reset Down Port Only completed: {successful_resets} ports reset successfully out of {total_down} unreachable locations"
+                yield f"data: {json.dumps({'type': 'complete', 'success': True, 'message': completion_message, 'timestamp': time.time()})}\n\n"
+            else:
+                completion_message = f"Reset Down Port Only completed: No ports needed resetting ({total_checked} locations checked)"
+                yield f"data: {json.dumps({'type': 'complete', 'success': True, 'message': completion_message, 'timestamp': time.time()})}\n\n"
+        
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': f'Unexpected error during reset down port only SSE operation: {str(e)}', 'timestamp': time.time()})}\n\n"
+    
+    return Response(
+        generate_reset_events(),
+        mimetype='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Headers': 'Cache-Control'
+        }
+    )
+
+
+@api_bp.route('/network/reset_all_locations_sse', methods=['POST'])
+def reset_all_locations_sse():
+    """
+    SSE version of reset_all_locations - Stream reset operations in real-time
+    
+    Args:
+        request.json (dict, optional): JSON payload containing:
+            - timeout (int, optional): Connection timeout in seconds for each reset
+                Defaults to 10
+    
+    Returns:
+        Server-Sent Events stream with progress updates
+    """
+    def generate_reset_events():
+        try:
+            # Load environment variables
+            load_dotenv()
+            
+            data = request.json if request.json else {}
+            timeout = data.get('timeout', 10)  # Default timeout of 10 seconds
+            
+            # Validate timeout parameter
+            try:
+                timeout = int(timeout)
+                if timeout <= 0 or timeout > 300:
+                    raise ValueError("Timeout must be between 1 and 300 seconds")
+            except (ValueError, TypeError):
+                yield f"data: {json.dumps({'type': 'error', 'message': 'Invalid timeout value. Must be an integer between 1 and 300 seconds', 'timestamp': time.time()})}\n\n"
+                return
+            
+            # Check if SSH credentials are available
+            ssh_username = os.getenv('SSH_USERNAME')
+            ssh_password = os.getenv('SSH_PASSWORD')
+            
+            if not ssh_username or not ssh_password:
+                yield f"data: {json.dumps({'type': 'error', 'message': 'SSH credentials not configured. Please set SSH_USERNAME and SSH_PASSWORD in .env file', 'timestamp': time.time()})}\n\n"
+                return
+            
+            # Get all locations from data.xlsx using shared function
+            success, result = get_locations_from_data_file()
+            
+            if not success:
+                yield f"data: {json.dumps({'type': 'error', 'message': result, 'timestamp': time.time()})}\n\n"
+                return
+            
+            # Extract locations from the result
+            locations = result['locations']
+            
+            yield f"data: {json.dumps({'type': 'start', 'message': f'Starting Reset All operation. Processing {len(locations)} locations...', 'timestamp': time.time()})}\n\n"
+            
+            successful_locations = []
+            failed_locations = []
+            
+            # Reset each location
+            for i, location in enumerate(locations):
+                try:
+                    yield f"data: {json.dumps({'type': 'reset_attempt', 'message': f'Reset attempt {i+1}/{len(locations)}', 'location': location, 'timestamp': time.time()})}\n\n"
+                    
+                    # Get SSH configuration
+                    config = retrieve_ssh_info_from_config(location)
+                    
+                    if not config:
+                        failed_locations.append({'location': location, 'error': 'SSH configuration not found'})
+                        yield f"data: {json.dumps({'type': 'reset_error', 'message': 'SSH configuration not found', 'location': location, 'timestamp': time.time()})}\n\n"
+                        continue
+                    
+                    # Create SSH configuration
+                    ssh_config = {
+                        'hostname': config['hostname'],
+                        'username': ssh_username,
+                        'password': ssh_password,
+                        'port': int(config['port'])
+                    }
+                    
+                    target_port = config['target_port']
+                    
+                    # Execute port reset
+                    success = reset_port_poe(ssh_config, target_port, timeout)
+                    
+                    if success:
+                        successful_locations.append(location)
+                        yield f"data: {json.dumps({'type': 'reset_success', 'message': f'Successfully reset port {target_port}', 'location': location, 'timestamp': time.time()})}\n\n"
+                    else:
+                        failed_locations.append({'location': location, 'error': 'Port reset failed'})
+                        yield f"data: {json.dumps({'type': 'reset_error', 'message': 'Port reset failed', 'location': location, 'timestamp': time.time()})}\n\n"
+                    
+                    # Small delay between resets
+                    if i < len(locations) - 1:
+                        yield f"data: {json.dumps({'type': 'progress', 'message': 'Waiting before next reset...', 'timestamp': time.time()})}\n\n"
+                        time.sleep(2)
+                        
+                except Exception as e:
+                    failed_locations.append({'location': location, 'error': str(e)})
+                    yield f"data: {json.dumps({'type': 'reset_error', 'message': f'Exception: {str(e)}', 'location': location, 'timestamp': time.time()})}\n\n"
+            
+            # Build completion message
+            success_count = len(successful_locations)
+            failed_count = len(failed_locations)
+            total_processed = len(locations)
+            
+            if success_count == total_processed:
+                overall_success = True
+                summary_message = f"Successfully reset {success_count} out of {total_processed} locations"
+            else:
+                overall_success = success_count > 0
+                summary_message = f"Reset operation completed: {success_count} successful, {failed_count} failed out of {total_processed} locations"
+            
+            yield f"data: {json.dumps({'type': 'complete', 'success': overall_success, 'message': summary_message, 'timestamp': time.time()})}\n\n"
+            
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': f'Unexpected error during reset all SSE operation: {str(e)}', 'timestamp': time.time()})}\n\n"
+    
+    return Response(
+        generate_reset_events(),
+        mimetype='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Headers': 'Cache-Control'
+        }
+    )

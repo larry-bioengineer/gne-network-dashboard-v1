@@ -10,7 +10,13 @@
     <div class="container">
         <h1>SSH Automation Dashboard</h1>
         
-        <button class="refresh-btn" onclick="loadData()">Refresh Data</button>
+        <div class="controls-container">
+            <button class="refresh-btn" onclick="loadData()">Refresh Data</button>
+            <button class="reset-all-btn" onclick="resetAllLocations()">
+                <span class="btn-icon">🔄</span>
+                <span class="btn-text">Reset All Locations</span>
+            </button>
+        </div>
         
         <div class="search-container">
             <input type="text" id="searchInput" class="search-input" placeholder="Search by location name..." onkeyup="filterTable()">
