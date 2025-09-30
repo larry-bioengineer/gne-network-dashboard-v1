@@ -41,8 +41,12 @@ def get_all_locations():
     """
     try:
         print("Reading configuration from data.xlsx...")
+        # Get the project root directory (parent of routine directory)
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        excel_path = os.path.join(project_root, 'config_file', 'data.xlsx')
+        
         # Use same sheet as in routes.py - 'Hardware list'
-        df = pd.read_excel('config_file/data.xlsx', sheet_name='Hardware list')
+        df = pd.read_excel(excel_path, sheet_name='Hardware list')
 
         # Return error if Location or IP is not found (same as get_ip_and_location)
         if 'Location' not in df.columns or 'IP' not in df.columns:
