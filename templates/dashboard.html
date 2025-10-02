@@ -30,20 +30,24 @@
         </div>
         
         <div class="batch-controls" id="batchControls" style="display: none;">
-            <div class="batch-selection">
-                <button class="batch-btn select-all-btn" onclick="selectAllVisible()">Select All</button>
-                <button class="batch-btn deselect-all-btn" onclick="deselectAll()">Deselect All</button>
-                <span class="selection-count" id="selectionCount">0 selected</span>
-            </div>
-            <div class="batch-actions">
-                <button class="batch-btn batch-ping-btn" onclick="batchPingSelected()" disabled>
-                    <span class="btn-icon">📺</span>
-                    <span class="btn-text">Live Ping Selected</span>
-                </button>
-                <button class="batch-btn batch-reset-btn" onclick="batchResetSelected()" disabled>
-                    <span class="btn-icon">🔄</span>
-                    <span class="btn-text">Reset Port Selected</span>
-                </button>
+            <div class="batch-controls-wrapper">
+                <div class="batch-selection">
+                    <div class="selection-group">
+                        <button class="batch-btn select-all-btn" onclick="selectAllVisible()">Select All</button>
+                        <button class="batch-btn deselect-all-btn" onclick="deselectAll()">Deselect All</button>
+                    </div>
+                    <span class="selection-count" id="selectionCount">0 selected</span>
+                </div>
+                <div class="batch-actions">
+                    <button class="batch-btn batch-ping-btn" onclick="batchPingSelected()" disabled>
+                        <span class="btn-icon">📺</span>
+                        <span class="btn-text">Live Ping Selected</span>
+                    </button>
+                    <button class="batch-btn batch-reset-btn" onclick="batchResetSelected()" disabled>
+                        <span class="btn-icon">🔄</span>
+                        <span class="btn-text">Reset Port Selected</span>
+                    </button>
+                </div>
             </div>
         </div>
         

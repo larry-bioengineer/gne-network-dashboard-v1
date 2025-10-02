@@ -45,11 +45,9 @@ async function loadData() {
                     <div class="action-container">
                         <div class="action-buttons">
                             <button class="action-btn sse-ping-btn" onclick="pingLocationSSE('${ips[i] || ''}', '${locations[i] || ''}', this)">
-                                <span class="btn-icon">📺</span>
                                 <span class="btn-text">Live Ping</span>
                             </button>
                             <button class="action-btn reset-port-btn" onclick="resetPort('${ips[i] || ''}', '${locations[i] || ''}', this)">
-                                <span class="btn-icon">🔄</span>
                                 <span class="btn-text">Reset Port</span>
                             </button>
                             <!-- Future buttons can be added here, for example:
@@ -99,13 +97,10 @@ async function pingLocationSSE(ip, location, button) {
     }
     
     const btnText = button.querySelector('.btn-text');
-    const btnIcon = button.querySelector('.btn-icon');
     const originalText = btnText.textContent;
-    const originalIcon = btnIcon.textContent;
     
     button.disabled = true;
     btnText.textContent = 'Live Pinging...';
-    btnIcon.textContent = '⏳';
     button.classList.add('loading');
     
     // Find the result container and show it
@@ -205,7 +200,6 @@ async function pingLocationSSE(ip, location, button) {
         // Reset button state
         button.disabled = false;
         btnText.textContent = originalText;
-        btnIcon.textContent = originalIcon;
         button.classList.remove('loading');
     }
 }
@@ -302,13 +296,10 @@ async function resetPort(ip, location, button) {
     }
     
     const btnText = button.querySelector('.btn-text');
-    const btnIcon = button.querySelector('.btn-icon');
     const originalText = btnText.textContent;
-    const originalIcon = btnIcon.textContent;
     
     button.disabled = true;
     btnText.textContent = 'Resetting...';
-    btnIcon.textContent = '⏳';
     button.classList.add('loading');
     
     // Find the result container and show it
@@ -381,7 +372,6 @@ async function resetPort(ip, location, button) {
         // Reset button state
         button.disabled = false;
         btnText.textContent = originalText;
-        btnIcon.textContent = originalIcon;
         button.classList.remove('loading');
     }
 }
@@ -475,14 +465,11 @@ async function batchPingSelected() {
     
     const batchPingBtn = document.querySelector('.batch-ping-btn');
     const btnText = batchPingBtn.querySelector('.btn-text');
-    const btnIcon = batchPingBtn.querySelector('.btn-icon');
     const originalText = btnText.textContent;
-    const originalIcon = btnIcon.textContent;
     
     // Update button state
     batchPingBtn.disabled = true;
     btnText.textContent = `Pinging ${selectedLocations.length} locations...`;
-    btnIcon.textContent = '⏳';
     batchPingBtn.classList.add('loading');
     
     try {
@@ -519,7 +506,6 @@ async function batchPingSelected() {
         // Reset button state
         batchPingBtn.disabled = false;
         btnText.textContent = originalText;
-        btnIcon.textContent = originalIcon;
         batchPingBtn.classList.remove('loading');
     }
 }
@@ -538,14 +524,11 @@ async function batchResetSelected() {
     
     const batchResetBtn = document.querySelector('.batch-reset-btn');
     const btnText = batchResetBtn.querySelector('.btn-text');
-    const btnIcon = batchResetBtn.querySelector('.btn-icon');
     const originalText = btnText.textContent;
-    const originalIcon = btnIcon.textContent;
     
     // Update button state
     batchResetBtn.disabled = true;
     btnText.textContent = `Resetting ${selectedLocations.length} locations...`;
-    btnIcon.textContent = '⏳';
     batchResetBtn.classList.add('loading');
     
     try {
@@ -582,7 +565,6 @@ async function batchResetSelected() {
         // Reset button state
         batchResetBtn.disabled = false;
         btnText.textContent = originalText;
-        btnIcon.textContent = originalIcon;
         batchResetBtn.classList.remove('loading');
     }
 }
