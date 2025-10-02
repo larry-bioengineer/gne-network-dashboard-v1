@@ -339,7 +339,11 @@ def retrieve_ssh_info_from_config(locName):
     """
     print(f"Retrieving port from config for {locName}")
     try:
-        df = pd.read_excel('config_file/data.xlsx', sheet_name='Port assignment')
+        # Get the project root directory (parent of service directory)
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        excel_path = os.path.join(project_root, 'config_file', 'data.xlsx')
+        
+        df = pd.read_excel(excel_path, sheet_name='Port assignment')
         
         # Check which columns exist in the dataframe
         available_columns = df.columns.tolist()

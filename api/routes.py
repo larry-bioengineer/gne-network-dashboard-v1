@@ -24,7 +24,11 @@ def get_locations_from_data_file():
                - If success=False, result contains error message
     """
     try:
-        df = pd.read_excel('config_file/data.xlsx', sheet_name='Hardware list')
+        # Get the project root directory (parent of api directory)
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        excel_path = os.path.join(project_root, 'config_file', 'data.xlsx')
+        
+        df = pd.read_excel(excel_path, sheet_name='Hardware list')
         
         # Return error if Location or IP is not found
         if 'Location' not in df.columns or 'IP' not in df.columns:
@@ -1081,18 +1085,19 @@ def reset_all_locations_sse():
     Returns:
         Server-Sent Events stream with progress updates
     """
+    # Capture request data before entering generator function
+    data = request.json if request.json else {}
+    timeout = data.get('timeout', 10)  # Default timeout of 10 seconds
+    
     def generate_reset_events():
         try:
             # Load environment variables
             load_dotenv()
             
-            data = request.json if request.json else {}
-            timeout = data.get('timeout', 10)  # Default timeout of 10 seconds
-            
             # Validate timeout parameter
             try:
-                timeout = int(timeout)
-                if timeout <= 0 or timeout > 300:
+                timeout_val = int(timeout)
+                if timeout_val <= 0 or timeout_val > 300:
                     raise ValueError("Timeout must be between 1 and 300 seconds")
             except (ValueError, TypeError):
                 yield f"data: {json.dumps({'type': 'error', 'message': 'Invalid timeout value. Must be an integer between 1 and 300 seconds', 'timestamp': time.time()})}\n\n"
@@ -1145,7 +1150,7 @@ def reset_all_locations_sse():
                     target_port = config['target_port']
                     
                     # Execute port reset
-                    success = reset_port_poe(ssh_config, target_port, timeout)
+                    success = reset_port_poe(ssh_config, target_port, timeout_val)
                     
                     if success:
                         successful_locations.append(location)
