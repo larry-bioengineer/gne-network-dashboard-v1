@@ -930,18 +930,19 @@ def reset_down_port_only_sse():
     Returns:
         Server-Sent Events stream with progress updates
     """
+    # Capture request data before entering generator to avoid request context issues
+    data = request.json if request.json else {}
+    timeout = data.get('timeout', 10)  # Default timeout of 10 seconds
+    
     def generate_reset_events():
         try:
             # Load environment variables
             load_dotenv()
             
-            data = request.json if request.json else {}
-            timeout = data.get('timeout', 10)  # Default timeout of 10 seconds
-            
             # Validate timeout parameter
             try:
-                timeout = int(timeout)
-                if timeout <= 0 or timeout > 300:
+                validated_timeout = int(timeout)
+                if validated_timeout <= 0 or validated_timeout > 300:
                     raise ValueError("Timeout must be between 1 and 300 seconds")
             except (ValueError, TypeError):
                 yield f"data: {json.dumps({'type': 'error', 'message': 'Invalid timeout value. Must be an integer between 1 and 300 seconds', 'timestamp': time.time()})}\n\n"
@@ -990,10 +991,10 @@ def reset_down_port_only_sse():
                     
                     # Ping the IP address
                     ping_result = subprocess.run(
-                        ['ping', '-c', '3', '-W', str(timeout), ip_address], 
+                        ['ping', '-c', '3', '-W', str(validated_timeout), ip_address], 
                         capture_output=True, 
                         text=True,
-                        timeout=timeout + 5
+                        timeout=validated_timeout + 5
                     )
                     
                     if ping_result.returncode == 0:
@@ -1025,7 +1026,7 @@ def reset_down_port_only_sse():
                                 target_port = config['target_port']
                                 
                                 # Execute port reset
-                                success = reset_port_poe(ssh_config, target_port, timeout)
+                                success = reset_port_poe(ssh_config, target_port, validated_timeout)
                                 
                                 if success:
                                     reset_successful.append({'location': location, 'ip': ip_address, 'target_port': target_port})
