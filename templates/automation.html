@@ -55,6 +55,15 @@
             background-color: #c82333;
         }
         
+        .automation-btn.abort {
+            background-color: #6c757d;
+            background: linear-gradient(135deg, #6c757d 0%, #5a6268 100%);
+        }
+        
+        .automation-btn.abort:hover:not(:disabled) {
+            background-color: #5a6268;
+        }
+        
         .automation-btn.reset-down-only {
             background-color: #fd7e14;
             background: linear-gradient(135deg, #fd7e14 0%, #e8650e 100%);
@@ -216,6 +225,11 @@
                     <span class="btn-text">Reset All</span>
                 </button>
                 
+                <button class="automation-btn abort" id="abortBtn" onclick="abortOperation()" style="display: none;">
+                    <span class="btn-icon">⏹️</span>
+                    <span class="btn-text">Abort</span>
+                </button>
+                
                 <div class="status-info">
                     <span>Ready to automate network management tasks</span>
                 </div>
@@ -238,6 +252,7 @@
 
     <script>
         let currentOperation = null;
+        let abortController = null;
         
         // Add a log line to the log container
         function addLogLine(message, type = 'info', timestamp = true) {
@@ -284,19 +299,47 @@
             }
         }
         
+        // Show/hide abort button
+        function toggleAbortButton(show) {
+            const abortBtn = document.getElementById('abortBtn');
+            abortBtn.style.display = show ? 'flex' : 'none';
+        }
+        
+        // Abort current operation
+        function abortOperation() {
+            if (abortController && currentOperation) {
+                abortController.abort();
+                addLogLine('Operation cancelled by user', 'warning');
+                resetButtonStates();
+            }
+        }
+        
+        // Reset all button states after operation ends
+        function resetButtonStates() {
+            setButtonState('resetDownOnlyBtn', false, false);
+            setButtonState('resetAllBtn', false, false);
+            toggleAbortButton(false);
+            currentOperation = null;
+            abortController = null;
+        }
+        
         // Handle reset down port only operation
         async function startResetDownOnly() {
             if (confirm('Are you sure you want to reset only DOWN ports? This will ping all devices and only reset those that are unreachable.')) {
                 setButtonState('resetDownOnlyBtn', true, true);
+                toggleAbortButton(true);
                 currentOperation = 'reset_down_port_only';
                 
                 try {
                     await resetDownOnlyOperation();
                 } catch (error) {
-                    addLogLine(`Error during reset down port only: ${error.message}`, 'error');
+                    if (error.name === 'AbortError') {
+                        addLogLine('Reset Down Port Only operation cancelled', 'warning');
+                    } else {
+                        addLogLine(`Error during reset down port only: ${error.message}`, 'error');
+                    }
                 } finally {
-                    setButtonState('resetDownOnlyBtn', false, false);
-                    currentOperation = null;
+                    resetButtonStates();
                 }
             }
         }
@@ -305,15 +348,19 @@
         async function startResetAll() {
             if (confirm('Are you sure you want to reset ALL ports? This will reset all devices in your configuration.')) {
                 setButtonState('resetAllBtn', true, true);
+                toggleAbortButton(true);
                 currentOperation = 'reset_all';
                 
                 try {
                     await resetAllOperation();
                 } catch (error) {
-                    addLogLine(`Error during reset all: ${error.message}`, 'error');
+                    if (error.name === 'AbortError') {
+                        addLogLine('Reset All operation cancelled', 'warning');
+                    } else {
+                        addLogLine(`Error during reset all: ${error.message}`, 'error');
+                    }
                 } finally {
-                    setButtonState('resetAllBtn', false, false);
-                    currentOperation = null;
+                    resetButtonStates();
                 }
             }
         }
@@ -323,6 +370,9 @@
             addLogLine('Starting Reset Down Port Only operation...', 'info');
             
             try {
+                // Create new abort controller for this operation
+                abortController = new AbortController();
+                
                 const response = await fetch('/api/network/reset_down_port_only_sse', {
                     method: 'POST',
                     headers: {
@@ -330,7 +380,8 @@
                     },
                     body: JSON.stringify({
                         timeout: 30
-                    })
+                    }),
+                    signal: abortController.signal
                 });
                 
                 if (!response.ok) {
@@ -400,6 +451,9 @@
             addLogLine('Starting Reset All operation...', 'info');
             
             try {
+                // Create new abort controller for this operation
+                abortController = new AbortController();
+                
                 const response = await fetch('/api/network/reset_all_locations_sse', {
                     method: 'POST',
                     headers: {
@@ -407,7 +461,8 @@
                     },
                     body: JSON.stringify({
                         timeout: 30
-                    })
+                    }),
+                    signal: abortController.signal
                 });
                 
                 if (!response.ok) {
