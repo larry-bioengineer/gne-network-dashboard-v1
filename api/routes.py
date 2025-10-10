@@ -791,17 +791,27 @@ def reset_down_port_only():
                 # Convert to string in case it's not already
                 ip_address = str(ip_address).strip()
                 
-                # Ping the IP address
-                print(f"Pinging {location} at {ip_address}...")
+                # Ping the IP address with more robust parameters
+                print(f"Pinging {location} at {ip_address} with 3 packets, 3s timeout...")
                 ping_result = subprocess.run(
-                    ['ping', '-c', '3', '-W', str(timeout), ip_address], 
+                    ['ping', '-c', '3', '-W', '3', '-i', '0.2', ip_address], 
                     capture_output=True, 
                     text=True,
                     timeout=timeout + 5  # Add buffer to ping timeout
                 )
                 
-                # Check if ping was successful
+                # More robust ping result validation
+                ping_success = False
                 if ping_result.returncode == 0:
+                    # Check if ping output contains success indicators
+                    ping_output = ping_result.stdout.lower()
+                    if 'bytes from' in ping_output or 'packets transmitted' in ping_output:
+                        # Additional validation: check if we got replies
+                        if '0% packet loss' in ping_output or 'packets transmitted' in ping_output:
+                            ping_success = True
+                
+                # Check if ping was successful
+                if ping_success:
                     # IP is reachable - no action needed
                     not_down.append({
                         'location': location, 
@@ -815,6 +825,10 @@ def reset_down_port_only():
                         'ip': ip_address,
                         'status': 'unreachable'
                     })
+                    
+                    # Log ping failure details for debugging
+                    print(f"Ping failed for {location} - Return code: {ping_result.returncode}")
+                    print(f"Ping output: {ping_result.stdout[:200]}...")
                     
                     try:
                         # Get SSH configuration for this location
@@ -987,23 +1001,37 @@ def reset_down_port_only_sse():
                     ip_address = str(ip_address).strip()
                     
                     # Send ping attempt status
-                    yield f"data: {json.dumps({'type': 'progress', 'message': f'Pinging {location} ({ip_address})...', 'location': location, 'timestamp': time.time()})}\n\n"
+                    yield f"data: {json.dumps({'type': 'progress', 'message': f'Pinging {location} ({ip_address}) with 3 packets, 3s timeout...', 'location': location, 'timestamp': time.time()})}\n\n"
                     
-                    # Ping the IP address
+                    # Ping the IP address with more robust parameters
                     ping_result = subprocess.run(
-                        ['ping', '-c', '3', '-W', str(validated_timeout), ip_address], 
+                        ['ping', '-c', '3', '-W', '3', '-i', '0.2', ip_address], 
                         capture_output=True, 
                         text=True,
                         timeout=validated_timeout + 5
                     )
                     
+                    # More robust ping result validation
+                    ping_success = False
                     if ping_result.returncode == 0:
+                        # Check if ping output contains success indicators
+                        ping_output = ping_result.stdout.lower()
+                        if 'bytes from' in ping_output or 'packets transmitted' in ping_output:
+                            # Additional validation: check if we got replies
+                            if '0% packet loss' in ping_output or 'packets transmitted' in ping_output:
+                                ping_success = True
+                    
+                    if ping_success:
                         # IP is reachable - no action needed
                         not_down.append({'location': location, 'ip': ip_address})
                         yield f"data: {json.dumps({'type': 'ping_result', 'success': True, 'message': f'{location} is reachable - no reset needed', 'location': location, 'timestamp': time.time()})}\n\n"
                     else:
                         # IP is not reachable - attempt port reset
                         down_locations.append({'location': location, 'ip': ip_address})
+                        
+                        # Log ping failure details for debugging
+                        ping_debug_info = f"Ping failed - Return code: {ping_result.returncode}, Output: {ping_result.stdout[:200]}..."
+                        yield f"data: {json.dumps({'type': 'ping_debug', 'message': ping_debug_info, 'location': location, 'timestamp': time.time()})}\n\n"
                         
                         yield f"data: {json.dumps({'type': 'reset_attempt', 'message': f'{location} is unreachable - attempting port reset', 'location': location, 'timestamp': time.time()})}\n\n"
                         

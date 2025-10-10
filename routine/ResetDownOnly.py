@@ -33,7 +33,7 @@ from api.models import ResponseModel
 
 def ping_host(ip_address, timeout=10, count=3):
     """
-    Ping a host to check if it's reachable
+    Ping a host to check if it's reachable with improved validation
     
     Args:
         ip_address (str): IP address to ping
@@ -44,19 +44,31 @@ def ping_host(ip_address, timeout=10, count=3):
         bool: True if ping successful, False otherwise
     """
     try:
-        print(f"Pinging {ip_address}...")
+        print(f"Pinging {ip_address} with {count} packets, 3s timeout...")
         ping_result = subprocess.run(
-            ['ping', '-c', str(count), '-W', str(timeout), ip_address], 
+            ['ping', '-c', str(count), '-W', '3', '-i', '0.2', ip_address], 
             capture_output=True, 
             text=True,
             timeout=timeout + 5  # Add buffer to ping timeout
         )
         
+        # More robust ping result validation
+        ping_success = False
         if ping_result.returncode == 0:
+            # Check if ping output contains success indicators
+            ping_output = ping_result.stdout.lower()
+            if 'bytes from' in ping_output or 'packets transmitted' in ping_output:
+                # Additional validation: check if we got replies
+                if '0% packet loss' in ping_output or 'packets transmitted' in ping_output:
+                    ping_success = True
+        
+        if ping_success:
             print(f"✅ {ip_address} is reachable")
             return True
         else:
             print(f"❌ {ip_address} is unreachable")
+            print(f"Ping debug - Return code: {ping_result.returncode}")
+            print(f"Ping output: {ping_result.stdout[:200]}...")
             return False
             
     except subprocess.TimeoutExpired:
