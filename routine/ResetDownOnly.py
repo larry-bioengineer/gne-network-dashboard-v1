@@ -31,28 +31,28 @@ from service.SSHConnection import reset_port_poe, retrieve_ssh_info_from_config
 from api.models import ResponseModel
 
 
-def ping_host(ip_address, timeout=10, count=3):
+def ping_host(ip_address, timeout=10):
     """
     Ping a host to check if it's reachable with improved validation
+    Matches the implementation used in reset_down_port_only_sse
     
     Args:
         ip_address (str): IP address to ping
-        timeout (int): Timeout in seconds for each ping
-        count (int): Number of ping packets to send
+        timeout (int): Connection timeout in seconds for ping operation
         
     Returns:
         bool: True if ping successful, False otherwise
     """
     try:
-        print(f"Pinging {ip_address} with {count} packets, 3s timeout...")
+        print(f"Pinging {ip_address} with 3 packets, 3s timeout...")
         ping_result = subprocess.run(
-            ['ping', '-c', str(count), '-W', '3', '-i', '0.2', ip_address], 
+            ['ping', '-c', '3', '-W', '3', '-i', '0.2', ip_address], 
             capture_output=True, 
             text=True,
             timeout=timeout + 5  # Add buffer to ping timeout
         )
         
-        # More robust ping result validation
+        # More robust ping result validation (matches SSE implementation)
         ping_success = False
         if ping_result.returncode == 0:
             # Check if ping output contains success indicators
