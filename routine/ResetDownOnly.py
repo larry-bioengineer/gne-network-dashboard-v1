@@ -45,22 +45,28 @@ def ping_host(ip_address, timeout=10):
     """
     try:
         print(f"Pinging {ip_address} with 3 packets, 3s timeout...")
+        # Force English output to avoid localization issues
+        env = os.environ.copy()
+        env['LC_ALL'] = 'C'
         ping_result = subprocess.run(
             ['ping', '-c', '3', '-W', '3', '-i', '0.2', ip_address], 
             capture_output=True, 
             text=True,
-            timeout=timeout + 5  # Add buffer to ping timeout
+            timeout=timeout + 5,  # Add buffer to ping timeout
+            env=env
         )
         
-        # More robust ping result validation (matches SSE implementation)
+        # More robust ping result validation using universal indicators
         ping_success = False
         if ping_result.returncode == 0:
-            # Check if ping output contains success indicators
+            # Check for universal success indicators that work across languages
             ping_output = ping_result.stdout.lower()
-            if 'bytes from' in ping_output or 'packets transmitted' in ping_output:
-                # Additional validation: check if we got replies
-                if '0% packet loss' in ping_output or 'packets transmitted' in ping_output:
-                    ping_success = True
+            # Look for TTL (Time To Live) which indicates successful ping response
+            if 'ttl=' in ping_output:
+                ping_success = True
+            # Alternative: look for timing indicators (ms) which also indicate success
+            elif 'ms' in ping_output and ('time=' in ping_output or '時間=' in ping_output):
+                ping_success = True
         
         if ping_success:
             print(f"✅ {ip_address} is reachable")
