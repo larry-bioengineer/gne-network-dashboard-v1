@@ -1014,7 +1014,7 @@ def reset_down_port_only_sse():
                     env = os.environ.copy()
                     env['LC_ALL'] = 'C'
                     ping_result = subprocess.run(
-                        ['ping', '-c', '3', '-W', '3', '-i', '0.2', ip_address], 
+                        ['ping', ip_address], 
                         capture_output=True, 
                         text=True,
                         timeout=validated_timeout + 5,
