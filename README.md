@@ -63,7 +63,13 @@ Create a `.env` file in the project root with your SSH credentials:
 ```env
 SSH_USERNAME=your_ssh_username
 SSH_PASSWORD=your_ssh_password
+BATCH_VERIFICATION_DELAY_SECONDS=30
 ```
+
+### Optional Environment Variables
+
+- **`BATCH_VERIFICATION_DELAY_SECONDS`** (default: 30) - Delay in seconds after all port resets before batch verification
+- **`SLEEP_DURATION_BEFORE_ENABLE_IN_SECOND`** (default: 2) - Delay between disabling and enabling PoE ports
 
 #### 4. Prepare Configuration File
 
@@ -100,6 +106,9 @@ The application requires these files to run:
 
 - **`.env`** - Environment variables
 - **`config_file/data.xlsx`** - Network devices configuration
+
+#### Network devices configuration
+Inside the `config_file/` directory, there is an `example.xlsx` detailing the format for the xlsx file. You must follow the format to create a new file named `data.xlsx`. An error will return if such a file doesn't exist when you try running `START_ME`
 
 ## Installation Troubleshooting
 
@@ -149,7 +158,8 @@ python main.py
 ## Features
 
 - **Network Diagnostics**: Ping tests for network connectivity
-- **Port Management**: Automated SSH port resets
+- **Port Management**: Automated SSH port resets with verification
+- **Batch Port Verification**: Automatic connectivity verification after all port resets are completed
 - **Location-Based Operations**: Interface with network devices by location
 - **Real-time Updates**: Live connectivity monitoring
 - **Web Dashboard**: User-friendly interface for all operations

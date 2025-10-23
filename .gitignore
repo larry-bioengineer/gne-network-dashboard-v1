@@ -8,3 +8,4 @@ __pycache__/
 *.pyd
 
 config_file/data.xlsx
+Log/

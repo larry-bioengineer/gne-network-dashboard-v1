@@ -10,6 +10,8 @@ import socket
 from dotenv import load_dotenv
 from service.SSHConnection import reset_port_poe, retrieve_ssh_info_from_config
 
+from api.util import log
+
 # Create a Blueprint for API routes
 api_bp = Blueprint('api', __name__, url_prefix='/api')
 
@@ -344,6 +346,49 @@ def ping_sse_location():
             'Access-Control-Allow-Headers': 'Cache-Control'
         }
     )
+
+def verify_port_connectivity(ip_address, timeout=3):
+    """
+    Verify that a port is back up after reset by pinging the IP address.
+    
+    Args:
+        ip_address: The IP address to ping
+        timeout: Timeout in seconds for the ping operation
+        
+    Returns:
+        bool: True if ping is successful, False otherwise
+    """
+    try:
+        # Force English output to avoid localization issues
+        env = os.environ.copy()
+        env['LC_ALL'] = 'C'
+        
+        ping_result = subprocess.run(
+            ['ping', '-c', '3', '-W', str(timeout), '-i', '0.2', ip_address], 
+            capture_output=True, 
+            text=True,
+            timeout=timeout + 5,
+            env=env
+        )
+        
+        # Check for universal success indicators that work across languages
+        ping_success = False
+        if ping_result.returncode == 0:
+            ping_output = ping_result.stdout.lower()
+            # Look for TTL (Time To Live) which indicates successful ping response
+            if 'ttl=' in ping_output:
+                ping_success = True
+            # Alternative: look for timing indicators (ms) which also indicate success
+            elif 'ms' in ping_output and ('time=' in ping_output or '時間=' in ping_output):
+                ping_success = True
+        
+        return ping_success
+        
+    except subprocess.TimeoutExpired:
+        return False
+    except Exception as e:
+        print(f"Error during port verification ping: {e}")
+        return False
 
 @api_bp.route('/network/reset_port', methods=['POST'])
 def reset_port():
@@ -869,8 +914,10 @@ def reset_down_port_only():
                                     'location': location,
                                     'ip': ip_address,
                                     'target_port': target_port,
-                                    'status': 'reset_successful'
+                                    'status': 'reset_successful',
+                                    'verified': False
                                 })
+                                print(f"Port {target_port} reset completed for {location} - verification will be performed after all resets")
                             else:
                                 reset_failed.append({
                                     'location': location,
@@ -900,12 +947,49 @@ def reset_down_port_only():
                     'error': f'Error during processing: {str(e)}'
                 })
         
-        # Build response message
+        # Perform batch verification after all resets are completed
         successful_resets = len(reset_successful)
         total_down = len(down_locations)
         
         if successful_resets > 0:
-            message = f"Completed port reset scan: {successful_resets} ports reset successfully out of {total_down} unreachable locations"
+            # Wait for devices to fully resume after resets
+            batch_verification_delay = int(os.getenv('BATCH_VERIFICATION_DELAY_SECONDS', '30'))
+            print(f"All {successful_resets} port resets completed. Waiting {batch_verification_delay} seconds for devices to resume before verification...")
+            time.sleep(batch_verification_delay)
+            
+            # Now verify all reset ports
+            verified_count = 0
+            for reset_entry in reset_successful:
+                location = reset_entry['location']
+                ip_address = reset_entry['ip']
+                target_port = reset_entry['target_port']
+                
+                print(f"Verifying {location} ({ip_address})...")
+                verification_success = verify_port_connectivity(ip_address, timeout)
+                
+                if verification_success:
+                    reset_entry['verified'] = True
+                    verified_count += 1
+                    print(f"{location} is now reachable")
+                else:
+                    reset_entry['verified'] = False
+                    print(f"{location} is still unreachable")
+        
+        # Build response message
+        successful_resets = len(reset_successful)
+        total_down = len(down_locations)
+        
+        # Count verified vs unverified resets
+        verified_resets = len([r for r in reset_successful if r.get('verified', False)])
+        unverified_resets = len([r for r in reset_successful if not r.get('verified', False)])
+        
+        if successful_resets > 0:
+            if verified_resets == successful_resets:
+                message = f"Completed port reset scan: {successful_resets} ports reset and all verified successfully out of {total_down} unreachable locations"
+            elif verified_resets > 0:
+                message = f"Completed port reset scan: {successful_resets} ports reset ({verified_resets} verified, {unverified_resets} still unreachable) out of {total_down} unreachable locations"
+            else:
+                message = f"Completed port reset scan: {successful_resets} ports reset but none verified as reachable out of {total_down} unreachable locations"
         else:
             message = f"No ports needed resetting: {total_checked} locations checked"
         
@@ -1069,8 +1153,8 @@ def reset_down_port_only_sse():
                                 success = reset_port_poe(ssh_config, target_port, validated_timeout)
                                 
                                 if success:
-                                    reset_successful.append({'location': location, 'ip': ip_address, 'target_port': target_port})
-                                    yield f"data: {json.dumps({'type': 'reset_success', 'message': f'Successfully reset port {target_port}', 'location': location, 'timestamp': time.time()})}\n\n"
+                                    reset_successful.append({'location': location, 'ip': ip_address, 'target_port': target_port, 'verified': False})
+                                    yield f"data: {json.dumps({'type': 'reset_success', 'message': f'Successfully reset port {target_port} - verification will be performed after all resets', 'location': location, 'timestamp': time.time()})}\n\n"
                                 else:
                                     reset_failed.append({'location': location, 'error': 'Port reset failed'})
                                     yield f"data: {json.dumps({'type': 'reset_error', 'message': 'Port reset failed', 'location': location, 'timestamp': time.time()})}\n\n"
@@ -1087,12 +1171,46 @@ def reset_down_port_only_sse():
                     reset_failed.append({'location': location, 'error': f'Error during processing: {str(e)}'})
                     yield f"data: {json.dumps({'type': 'reset_error', 'message': f'Processing error: {str(e)}', 'location': location, 'timestamp': time.time()})}\n\n"
             
-            # Send completion event
+            
+
+            # Perform batch verification after all resets are completed
             successful_resets = len(reset_successful)
             total_down = len(down_locations)
             
             if successful_resets > 0:
-                completion_message = f"Reset Down Port Only completed: {successful_resets} ports reset successfully out of {total_down} unreachable locations"
+                # Wait for devices to fully resume after resets
+                batch_verification_delay = int(os.getenv('BATCH_VERIFICATION_DELAY_SECONDS', '30'))
+                yield f"data: {json.dumps({'type': 'batch_verification_start', 'message': f'All {successful_resets} port resets completed. Waiting {batch_verification_delay} seconds for devices to resume before verification...', 'timestamp': time.time()})}\n\n"
+                time.sleep(batch_verification_delay)
+                
+                # Now verify all reset ports
+                verified_count = 0
+                for reset_entry in reset_successful:
+                    location = reset_entry['location']
+                    ip_address = reset_entry['ip']
+                    target_port = reset_entry['target_port']
+                    
+                    yield f"data: {json.dumps({'type': 'verification_progress', 'message': f'Verifying {location} ({ip_address})...', 'location': location, 'timestamp': time.time()})}\n\n"
+                    
+                    verification_success = verify_port_connectivity(ip_address, validated_timeout)
+                    if verification_success:
+                        reset_entry['verified'] = True
+                        verified_count += 1
+                        log.log_to_file(f"Reset Down Port Only: Ping successful for {location} ({ip_address})", 'INFO')
+                        yield f"data: {json.dumps({'type': 'verification_success', 'message': f'{location} is now reachable after reset', 'location': location, 'timestamp': time.time()})}\n\n"
+                    else:
+                        reset_entry['verified'] = False
+                        log.log_to_file(f"Reset Down Port Only: Ping failed for {location} ({ip_address})", 'ERROR')
+                        yield f"data: {json.dumps({'type': 'verification_failed', 'message': f'{location} is still unreachable after reset', 'location': location, 'timestamp': time.time()})}\n\n"
+                
+                # Send final completion event with verification results
+                unverified_count = successful_resets - verified_count
+                if verified_count == successful_resets:
+                    completion_message = f"Reset Down Port Only completed: {successful_resets} ports reset and all verified successfully out of {total_down} unreachable locations"
+                elif verified_count > 0:
+                    completion_message = f"Reset Down Port Only completed: {successful_resets} ports reset ({verified_count} verified, {unverified_count} still unreachable) out of {total_down} unreachable locations"
+                else:
+                    completion_message = f"Reset Down Port Only completed: {successful_resets} ports reset but none verified as reachable out of {total_down} unreachable locations"
                 yield f"data: {json.dumps({'type': 'complete', 'success': True, 'message': completion_message, 'timestamp': time.time()})}\n\n"
             else:
                 completion_message = f"Reset Down Port Only completed: No ports needed resetting ({total_checked} locations checked)"
