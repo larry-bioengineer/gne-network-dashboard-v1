@@ -131,7 +131,14 @@ def ping():
         return jsonify({'error': 'Interface is required'}), 400
 
     # ping the interface
-    ping_result = subprocess.run(['ping', interface], capture_output=True, text=True)
+    # Set reasonable default ping count and timeout (3 packets, 3s per packet)
+    ping_count = 3
+    ping_timeout = 3  # seconds per packet
+    ping_result = subprocess.run(
+        ['ping', '-c', str(ping_count), '-W', str(ping_timeout), interface], 
+        capture_output=True, 
+        text=True
+    )
     
     return jsonify({'result': ping_result.stdout})
 
@@ -1354,3 +1361,323 @@ def reset_all_locations_sse():
             'Access-Control-Allow-Headers': 'Cache-Control'
         }
     )
+
+
+@api_bp.route('/network/ping_all_status', methods=['GET'])
+def ping_all_status():
+    """
+    Ping all IP addresses from the data.xlsx file and return their status
+    
+    Returns:
+        ResponseModel: JSON response containing:
+            - success (bool): Whether the operation was successful
+            - message (str): Human-readable message describing the result
+            - data (dict): Details of the ping results including:
+                - locations: List of location names
+                - ips: List of IP addresses
+                - statuses: List of ping statuses (True/False for each IP)
+                - ping_results: Detailed ping results for each IP
+    """
+    try:
+        # Get all locations from data.xlsx using shared function
+        success, result = get_locations_from_data_file()
+        
+        if not success:
+            response = ResponseModel(
+                success=False,
+                message=result,
+                data=None
+            )
+            return jsonify(response.to_dict()), 500
+        
+        # Extract locations and dataframe from the result
+        df_clean = result['df_clean']
+        
+        # Process all locations
+        locations = []
+        ips = []
+        statuses = []
+        ping_results = []
+        
+        # Check each location
+        for _, row in df_clean.iterrows():
+            location = row['Location']
+            ip_address = str(row['IP']).strip()
+            
+            locations.append(location)
+            ips.append(ip_address)
+            
+            # Ping the IP address
+            try:
+                # Force English output to avoid localization issues
+                env = os.environ.copy()
+                env['LC_ALL'] = 'C'
+                
+                ping_result = subprocess.run(
+                    ['ping', '-c', '1', '-W', '3', ip_address], 
+                    capture_output=True, 
+                    text=True,
+                    timeout=5,
+                    env=env
+                )
+                
+                # Check for universal success indicators that work across languages
+                ping_success = False
+                if ping_result.returncode == 0:
+                    ping_output = ping_result.stdout.lower()
+                    # Look for TTL (Time To Live) which indicates successful ping response
+                    if 'ttl=' in ping_output:
+                        ping_success = True
+                    # Alternative: look for timing indicators (ms) which also indicate success
+                    elif 'ms' in ping_output and ('time=' in ping_output or '時間=' in ping_output):
+                        ping_success = True
+                
+                statuses.append(ping_success)
+                ping_results.append({
+                    'success': ping_success,
+                    'return_code': ping_result.returncode,
+                    'output': ping_result.stdout[:200] if ping_result.stdout else '',
+                    'error': ping_result.stderr[:200] if ping_result.stderr else ''
+                })
+                
+            except subprocess.TimeoutExpired:
+                statuses.append(False)
+                ping_results.append({
+                    'success': False,
+                    'return_code': -1,
+                    'output': '',
+                    'error': 'Ping timeout'
+                })
+            except Exception as e:
+                statuses.append(False)
+                ping_results.append({
+                    'success': False,
+                    'return_code': -1,
+                    'output': '',
+                    'error': f'Ping error: {str(e)}'
+                })
+        
+        # Count successful pings
+        successful_pings = sum(statuses)
+        total_pings = len(statuses)
+        
+        response = ResponseModel(
+            success=True,
+            message=f"Ping status check completed: {successful_pings}/{total_pings} locations reachable",
+            data={
+                'locations': locations,
+                'ips': ips,
+                'statuses': statuses,
+                'ping_results': ping_results,
+                'summary': {
+                    'total': total_pings,
+                    'successful': successful_pings,
+                    'failed': total_pings - successful_pings
+                }
+            }
+        )
+        
+        return jsonify(response.to_dict())
+        
+    except Exception as e:
+        response = ResponseModel(
+            success=False,
+            message=f"Unexpected error during ping status check: {str(e)}",
+            data={'error_type': 'UNEXPECTED_ERROR'}
+        )
+        return jsonify(response.to_dict()), 500
+
+@api_bp.route('/network/ping_single_status', methods=['POST'])
+def ping_single_status():
+    """
+    Ping a single IP address and return its status
+    
+    Args:
+        request.json (dict): JSON payload containing:
+            - ip (str): IP address to ping
+            - location (str, optional): Location name for logging
+    
+    Returns:
+        ResponseModel: JSON response containing:
+            - success (bool): Whether the operation was successful
+            - message (str): Human-readable message describing the result
+            - data (dict): Details of the ping result including:
+                - ip: The IP address that was pinged
+                - location: The location name (if provided)
+                - status: Boolean indicating if ping was successful
+                - ping_result: Detailed ping result
+    """
+    try:
+        data = request.json
+        if not data or 'ip' not in data:
+            response = ResponseModel(
+                success=False,
+                message="IP address is required",
+                data=None
+            )
+            return jsonify(response.to_dict()), 400
+        
+        ip_address = data['ip']
+        location = data.get('location', 'Unknown')
+        
+        # Ping the IP address
+        try:
+            # Force English output to avoid localization issues
+            env = os.environ.copy()
+            env['LC_ALL'] = 'C'
+            
+            ping_result = subprocess.run(
+                ['ping', '-c', '1', '-W', '3', ip_address], 
+                capture_output=True, 
+                text=True,
+                timeout=5,
+                env=env
+            )
+            
+            # Check for universal success indicators that work across languages
+            ping_success = False
+            if ping_result.returncode == 0:
+                ping_output = ping_result.stdout.lower()
+                # Look for TTL (Time To Live) which indicates successful ping response
+                if 'ttl=' in ping_output:
+                    ping_success = True
+                # Alternative: look for timing indicators (ms) which also indicate success
+                elif 'ms' in ping_output and ('time=' in ping_output or '時間=' in ping_output):
+                    ping_success = True
+            
+            response = ResponseModel(
+                success=True,
+                message=f"Ping completed for {location} ({ip_address})",
+                data={
+                    'ip': ip_address,
+                    'location': location,
+                    'status': ping_success,
+                    'ping_result': {
+                        'success': ping_success,
+                        'return_code': ping_result.returncode,
+                        'output': ping_result.stdout[:200] if ping_result.stdout else '',
+                        'error': ping_result.stderr[:200] if ping_result.stderr else ''
+                    }
+                }
+            )
+            
+            return jsonify(response.to_dict())
+            
+        except subprocess.TimeoutExpired:
+            response = ResponseModel(
+                success=True,
+                message=f"Ping timeout for {location} ({ip_address})",
+                data={
+                    'ip': ip_address,
+                    'location': location,
+                    'status': False,
+                    'ping_result': {
+                        'success': False,
+                        'return_code': -1,
+                        'output': '',
+                        'error': 'Ping timeout'
+                    }
+                }
+            )
+            return jsonify(response.to_dict())
+            
+        except Exception as e:
+            response = ResponseModel(
+                success=True,
+                message=f"Ping error for {location} ({ip_address}): {str(e)}",
+                data={
+                    'ip': ip_address,
+                    'location': location,
+                    'status': False,
+                    'ping_result': {
+                        'success': False,
+                        'return_code': -1,
+                        'output': '',
+                        'error': f'Ping error: {str(e)}'
+                    }
+                }
+            )
+            return jsonify(response.to_dict())
+        
+    except Exception as e:
+        response = ResponseModel(
+            success=False,
+            message=f"Unexpected error during single ping status check: {str(e)}",
+            data={'error_type': 'UNEXPECTED_ERROR'}
+        )
+        return jsonify(response.to_dict()), 500
+
+@api_bp.route('/config/edit', methods=['POST'])
+def edit_config():
+    """
+    Edit the config file
+    """
+    try:
+        data = request.json
+        
+        if not data or 'data' not in data:
+            return jsonify({'error': 'No data provided'}), 400
+        
+        config_data = data['data']
+        
+        # Validate the data structure
+        if not isinstance(config_data, list):
+            return jsonify({'error': 'Data must be a list of records'}), 400
+        
+        # Validate each record is a dictionary (no required field checks)
+        for i, record in enumerate(config_data):
+            if not isinstance(record, dict):
+                return jsonify({'error': f'Record {i} must be a dictionary'}), 400
+        
+        # Get the project root directory
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        excel_path = os.path.join(project_root, 'config_file', 'data.xlsx')
+        
+        # Read the existing Excel file
+        try:
+            # Load the existing workbook
+            from openpyxl import load_workbook
+            workbook = load_workbook(excel_path)
+            
+            # Check if 'Port assignment' sheet exists, create if not
+            if 'Port assignment' not in workbook.sheetnames:
+                workbook.create_sheet('Port assignment')
+            
+            worksheet = workbook['Port assignment']
+            
+            # Clear existing data (except header row)
+            if worksheet.max_row > 1:
+                worksheet.delete_rows(2, worksheet.max_row)
+            
+            # Set headers if sheet is empty
+            if worksheet.max_row == 0:
+                headers = ['Unnamed: 0', 'Switch Port', 'Location', 'SSH IP']
+                for col, header in enumerate(headers, 1):
+                    worksheet.cell(row=1, column=col, value=header)
+            
+            # Write the new data
+            for row_idx, record in enumerate(config_data, 2):  # Start from row 2 (after header)
+                worksheet.cell(row=row_idx, column=1, value=record.get('Unnamed: 0', ''))
+                worksheet.cell(row=row_idx, column=2, value=record.get('Switch Port', ''))
+                worksheet.cell(row=row_idx, column=3, value=record.get('Location', ''))
+                worksheet.cell(row=row_idx, column=4, value=record.get('SSH IP', ''))
+            
+            # Save the workbook
+            workbook.save(excel_path)
+            workbook.close()
+            
+            log.log_to_file(f"Config file updated successfully with {len(config_data)} records")
+            return jsonify({'message': 'Config edited successfully', 'records_updated': len(config_data)}), 200
+            
+        except Exception as e:
+            log.log_to_file(f"Error updating Excel file: {str(e)}", 'ERROR')
+            return jsonify({'error': f'Failed to update config file: {str(e)}'}), 500
+            
+    except Exception as e:
+        log.log_to_file(f"Error in edit_config: {str(e)}", 'ERROR')
+        return jsonify({'error': f'Internal server error: {str(e)}'}), 500
+
+
+
+
+

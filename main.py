@@ -1,9 +1,10 @@
-from flask import Flask, redirect, render_template
+from flask import Flask, redirect, render_template, jsonify
 import os
 import dotenv
 from api.routes import api_bp
-
+import pandas as pd
 dotenv.load_dotenv()
+
 app = Flask(__name__)
 
 # Register the API blueprint
@@ -21,6 +22,14 @@ def dashboard():
 def automation():
     return render_template('automation.html')
 
+@app.route('/config_edit')
+def config_edit():
+
+    # read the data.xlsx file
+    df = pd.read_excel('config_file/data.xlsx', sheet_name='Port assignment')
+
+    return render_template('config_edit.html', df=df.to_dict(orient='records'))
+
 if __name__ == '__main__':
     # check if config_file/data.xlsx exists
     if not os.path.exists('config_file/data.xlsx'):
@@ -30,5 +39,6 @@ if __name__ == '__main__':
     
     app.run(
         debug=True,
-        port=os.getenv('SERVER_PORT')
+        port=int(os.getenv('SERVER_PORT', 5000)),
+        threaded=True
         )

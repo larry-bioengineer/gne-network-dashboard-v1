@@ -41,6 +41,12 @@ async function loadData() {
                 </td>
                 <td>${locations[i] || 'N/A'}</td>
                 <td>${ips[i] || 'N/A'}</td>
+                <td class="status-column">
+                    <span class="status-indicator" id="status-${i}">
+                        <span class="status-text">Checking...</span>
+                        <span class="status-icon">⏳</span>
+                    </span>
+                </td>
                 <td>
                     <div class="action-container">
                         <div class="action-buttons">
@@ -80,6 +86,9 @@ async function loadData() {
         // Hide loading, show table
         loading.style.display = 'none';
         table.style.display = 'table';
+        
+        // Start pinging all IPs to check their status
+        pingAllStatuses();
         
     } catch (err) {
         console.error('Error loading data:', err);
@@ -707,5 +716,100 @@ async function resetPortForBatch(location, ip, index) {
         statusElement.textContent = '✗ Error';
         statusElement.className = 'batch-result-status error';
         contentElement.innerHTML = `<div class="error">Error: ${err.message}</div>`;
+    }
+}
+
+// Function to ping all IPs and update their status indicators using concurrent requests
+async function pingAllStatuses() {
+    try {
+        // Get all IP addresses and locations from the table
+        const tableRows = document.querySelectorAll('#tableBody tr');
+        const pingPromises = [];
+        const rowData = [];
+        
+        // Prepare data for each row
+        for (let i = 0; i < tableRows.length; i++) {
+            const row = tableRows[i];
+            const ipCell = row.cells[2]; // IP is in the third column
+            const locationCell = row.cells[1]; // Location is in the second column
+            
+            if (ipCell && locationCell) {
+                const ip = ipCell.textContent.trim();
+                const location = locationCell.textContent.trim();
+                
+                if (ip && ip !== 'N/A') {
+                    rowData.push({ index: i, ip, location });
+                    
+                    // Create a promise for each ping request
+                    const pingPromise = fetch('/api/network/ping_single_status', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            ip: ip,
+                            location: location
+                        })
+                    }).then(response => response.json())
+                      .then(data => ({ index: i, data, success: true }))
+                      .catch(error => ({ index: i, error, success: false }));
+                    
+                    pingPromises.push(pingPromise);
+                }
+            }
+        }
+        
+        console.log(`Starting concurrent ping for ${pingPromises.length} locations...`);
+        
+        // Execute all ping requests concurrently using Promise.all()
+        const results = await Promise.all(pingPromises);
+        
+        let successfulPings = 0;
+        let totalPings = results.length;
+        
+        // Process results and update status indicators
+        results.forEach(result => {
+            const statusElement = document.getElementById(`status-${result.index}`);
+            if (statusElement) {
+                const statusText = statusElement.querySelector('.status-text');
+                const statusIcon = statusElement.querySelector('.status-icon');
+                
+                if (result.success && result.data.success) {
+                    const pingData = result.data.data;
+                    if (pingData.status) {
+                        // IP is reachable
+                        statusText.textContent = 'Online';
+                        statusIcon.textContent = '🟢';
+                        statusElement.className = 'status-indicator online';
+                        successfulPings++;
+                    } else {
+                        // IP is not reachable
+                        statusText.textContent = 'Offline';
+                        statusIcon.textContent = '🔴';
+                        statusElement.className = 'status-indicator offline';
+                    }
+                } else {
+                    // Error occurred
+                    statusText.textContent = 'Error';
+                    statusIcon.textContent = '❌';
+                    statusElement.className = 'status-indicator error';
+                }
+            }
+        });
+        
+        console.log(`Concurrent status check completed: ${successfulPings}/${totalPings} locations online`);
+        
+    } catch (err) {
+        console.error('Error checking ping statuses:', err);
+        
+        // Update all status indicators to show error
+        const statusElements = document.querySelectorAll('.status-indicator');
+        statusElements.forEach(element => {
+            const statusText = element.querySelector('.status-text');
+            const statusIcon = element.querySelector('.status-icon');
+            statusText.textContent = 'Error';
+            statusIcon.textContent = '❌';
+            element.className = 'status-indicator error';
+        });
     }
 }
