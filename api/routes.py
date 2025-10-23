@@ -1645,22 +1645,36 @@ def edit_config():
             
             worksheet = workbook['Port assignment']
             
+            # Get existing headers to preserve column order, excluding device name columns
+            device_name_columns = ['Unnamed: 0', 'Device Name', 'Device', 'Name', 'Hostname']
+            existing_headers = []
+            if worksheet.max_row > 0:
+                for col in range(1, worksheet.max_column + 1):
+                    cell_value = worksheet.cell(row=1, column=col).value
+                    if cell_value and cell_value not in device_name_columns:
+                        existing_headers.append(cell_value)
+            
+            # If no existing headers, use default order (without device name column)
+            if not existing_headers:
+                existing_headers = ['Switch Port', 'Location', 'SSH IP']
+                # Set headers if sheet is empty
+                for col, header in enumerate(existing_headers, 1):
+                    worksheet.cell(row=1, column=col, value=header)
+            
+            # Ensure we have the required columns, add them if missing
+            required_columns = ['Switch Port', 'Location', 'SSH IP']
+            for req_col in required_columns:
+                if req_col not in existing_headers:
+                    existing_headers.append(req_col)
+            
             # Clear existing data (except header row)
             if worksheet.max_row > 1:
                 worksheet.delete_rows(2, worksheet.max_row)
             
-            # Set headers if sheet is empty
-            if worksheet.max_row == 0:
-                headers = ['Unnamed: 0', 'Switch Port', 'Location', 'SSH IP']
-                for col, header in enumerate(headers, 1):
-                    worksheet.cell(row=1, column=col, value=header)
-            
-            # Write the new data
+            # Write the new data using the preserved column order
             for row_idx, record in enumerate(config_data, 2):  # Start from row 2 (after header)
-                worksheet.cell(row=row_idx, column=1, value=record.get('Unnamed: 0', ''))
-                worksheet.cell(row=row_idx, column=2, value=record.get('Switch Port', ''))
-                worksheet.cell(row=row_idx, column=3, value=record.get('Location', ''))
-                worksheet.cell(row=row_idx, column=4, value=record.get('SSH IP', ''))
+                for col_idx, header in enumerate(existing_headers, 1):
+                    worksheet.cell(row=row_idx, column=col_idx, value=record.get(header, ''))
             
             # Save the workbook
             workbook.save(excel_path)

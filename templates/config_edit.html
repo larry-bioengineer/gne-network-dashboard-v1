@@ -319,11 +319,10 @@
                 <table class="config-table" id="portTable">
                     <thead>
                         <tr>
-                            <th style="width: 25%;">Device Name</th>
-                            <th style="width: 20%;">Switch Port</th>
-                            <th style="width: 25%;">Location</th>
-                            <th style="width: 25%;">SSH IP</th>
-                            <th style="width: 5%;">Delete</th>
+                            <th style="width: 30%;">Switch Port</th>
+                            <th style="width: 30%;">Location</th>
+                            <th style="width: 30%;">SSH IP</th>
+                            <th style="width: 10%;">Delete</th>
                         </tr>
                     </thead>
                     <tbody id="portTableBody">
@@ -526,7 +525,6 @@
             const tr = document.createElement('tr');
             tr.id = `port-row-${index}`;
             tr.innerHTML = `
-                <td><input type="text" value="${rowData['Unnamed: 0'] || ''}" data-field="Unnamed: 0" data-row="${index}"></td>
                 <td><input type="text" value="${rowData['Switch Port'] || ''}" data-field="Switch Port" data-row="${index}"></td>
                 <td><input type="text" value="${rowData.Location || ''}" data-field="Location" data-row="${index}"></td>
                 <td><input type="text" value="${rowData['SSH IP'] || ''}" data-field="SSH IP" data-row="${index}"></td>
@@ -555,7 +553,6 @@
 
         function addNewPortRow() {
             const newRow = {
-                'Unnamed: 0': '',
                 'Switch Port': '',
                 'Location': '',
                 'SSH IP': ''

@@ -28,6 +28,12 @@ def config_edit():
     # read both sheets from the data.xlsx file
     hardware_df = pd.read_excel('config_file/data.xlsx', sheet_name='Hardware list')
     port_df = pd.read_excel('config_file/data.xlsx', sheet_name='Port assignment')
+    
+    # Filter out device name columns from port data
+    device_name_columns = ['Unnamed: 0', 'Device Name', 'Device', 'Name', 'Hostname']
+    columns_to_drop = [col for col in device_name_columns if col in port_df.columns]
+    if columns_to_drop:
+        port_df = port_df.drop(columns=columns_to_drop)
 
     return render_template('config_edit.html', 
                          hardware_data=hardware_df.to_dict(orient='records'),
