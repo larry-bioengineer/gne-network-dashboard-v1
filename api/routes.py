@@ -135,7 +135,7 @@ def ping():
     ping_count = 3
     ping_timeout = 3  # seconds per packet
     ping_result = subprocess.run(
-        ['ping', '-c', str(ping_count), '-W', str(ping_timeout), interface], 
+        ['ping', interface], 
         capture_output=True, 
         text=True
     )
@@ -371,7 +371,7 @@ def verify_port_connectivity(ip_address, timeout=3):
         env['LC_ALL'] = 'C'
         
         ping_result = subprocess.run(
-            ['ping', '-c', '3', '-W', str(timeout), '-i', '0.2', ip_address], 
+            ['ping', ip_address], 
             capture_output=True, 
             text=True,
             timeout=timeout + 5,
@@ -849,7 +849,7 @@ def reset_down_port_only():
                 env = os.environ.copy()
                 env['LC_ALL'] = 'C'
                 ping_result = subprocess.run(
-                    ['ping', '-c', '3', '-W', '3', '-i', '0.2', ip_address], 
+                    ['ping', ip_address], 
                     capture_output=True, 
                     text=True,
                     timeout=timeout + 5,  # Add buffer to ping timeout
@@ -1414,7 +1414,7 @@ def ping_all_status():
                 env['LC_ALL'] = 'C'
                 
                 ping_result = subprocess.run(
-                    ['ping', '-c', '1', '-W', '3', ip_address], 
+                    ['ping', ip_address], 
                     capture_output=True, 
                     text=True,
                     timeout=5,
@@ -1527,7 +1527,7 @@ def ping_single_status():
             env['LC_ALL'] = 'C'
             
             ping_result = subprocess.run(
-                ['ping', '-c', '1', '-W', '3', ip_address], 
+                ['ping', ip_address], 
                 capture_output=True, 
                 text=True,
                 timeout=5,
