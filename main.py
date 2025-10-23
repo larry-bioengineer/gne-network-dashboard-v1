@@ -25,10 +25,13 @@ def automation():
 @app.route('/config_edit')
 def config_edit():
 
-    # read the data.xlsx file
-    df = pd.read_excel('config_file/data.xlsx', sheet_name='Port assignment')
+    # read both sheets from the data.xlsx file
+    hardware_df = pd.read_excel('config_file/data.xlsx', sheet_name='Hardware list')
+    port_df = pd.read_excel('config_file/data.xlsx', sheet_name='Port assignment')
 
-    return render_template('config_edit.html', df=df.to_dict(orient='records'))
+    return render_template('config_edit.html', 
+                         hardware_data=hardware_df.to_dict(orient='records'),
+                         port_data=port_df.to_dict(orient='records'))
 
 if __name__ == '__main__':
     # check if config_file/data.xlsx exists

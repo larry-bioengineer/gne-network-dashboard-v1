@@ -1610,7 +1610,7 @@ def ping_single_status():
 @api_bp.route('/config/edit', methods=['POST'])
 def edit_config():
     """
-    Edit the config file
+    Edit the Port assignment sheet in the config file
     """
     try:
         data = request.json
@@ -1666,8 +1666,8 @@ def edit_config():
             workbook.save(excel_path)
             workbook.close()
             
-            log.log_to_file(f"Config file updated successfully with {len(config_data)} records")
-            return jsonify({'message': 'Config edited successfully', 'records_updated': len(config_data)}), 200
+            log.log_to_file(f"Port assignment config updated successfully with {len(config_data)} records")
+            return jsonify({'message': 'Port assignment config edited successfully', 'records_updated': len(config_data)}), 200
             
         except Exception as e:
             log.log_to_file(f"Error updating Excel file: {str(e)}", 'ERROR')
@@ -1675,6 +1675,77 @@ def edit_config():
             
     except Exception as e:
         log.log_to_file(f"Error in edit_config: {str(e)}", 'ERROR')
+        return jsonify({'error': f'Internal server error: {str(e)}'}), 500
+
+
+@api_bp.route('/config/edit_hardware', methods=['POST'])
+def edit_hardware_config():
+    """
+    Edit the Hardware list sheet in the config file
+    """
+    try:
+        data = request.json
+        
+        if not data or 'data' not in data:
+            return jsonify({'error': 'No data provided'}), 400
+        
+        hardware_data = data['data']
+        
+        # Validate the data structure
+        if not isinstance(hardware_data, list):
+            return jsonify({'error': 'Data must be a list of records'}), 400
+        
+        # Validate each record is a dictionary (no required field checks)
+        for i, record in enumerate(hardware_data):
+            if not isinstance(record, dict):
+                return jsonify({'error': f'Record {i} must be a dictionary'}), 400
+        
+        # Get the project root directory
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        excel_path = os.path.join(project_root, 'config_file', 'data.xlsx')
+        
+        # Read the existing Excel file
+        try:
+            # Load the existing workbook
+            from openpyxl import load_workbook
+            workbook = load_workbook(excel_path)
+            
+            # Check if 'Hardware list' sheet exists, create if not
+            if 'Hardware list' not in workbook.sheetnames:
+                workbook.create_sheet('Hardware list')
+            
+            worksheet = workbook['Hardware list']
+            
+            # Clear existing data (except header row)
+            if worksheet.max_row > 1:
+                worksheet.delete_rows(2, worksheet.max_row)
+            
+            # Use explicit column order to maintain consistency
+            headers = ['Location', 'IP']
+            
+            # Set headers if sheet is empty
+            if worksheet.max_row == 0:
+                for col, header in enumerate(headers, 1):
+                    worksheet.cell(row=1, column=col, value=header)
+            
+            # Write the new data
+            for row_idx, record in enumerate(hardware_data, 2):  # Start from row 2 (after header)
+                for col_idx, header in enumerate(headers, 1):
+                    worksheet.cell(row=row_idx, column=col_idx, value=record.get(header, ''))
+            
+            # Save the workbook
+            workbook.save(excel_path)
+            workbook.close()
+            
+            log.log_to_file(f"Hardware list config updated successfully with {len(hardware_data)} records")
+            return jsonify({'message': 'Hardware list config edited successfully', 'records_updated': len(hardware_data)}), 200
+            
+        except Exception as e:
+            log.log_to_file(f"Error updating Excel file: {str(e)}", 'ERROR')
+            return jsonify({'error': f'Failed to update config file: {str(e)}'}), 500
+            
+    except Exception as e:
+        log.log_to_file(f"Error in edit_hardware_config: {str(e)}", 'ERROR')
         return jsonify({'error': f'Internal server error: {str(e)}'}), 500
 
 

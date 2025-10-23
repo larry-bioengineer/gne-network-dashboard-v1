@@ -10,6 +10,46 @@
             margin-top: 20px;
         }
         
+        .config-tabs {
+            display: flex;
+            border-bottom: 2px solid #e9ecef;
+            margin-bottom: 20px;
+        }
+        
+        .config-tab {
+            padding: 12px 24px;
+            background-color: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-bottom: none;
+            cursor: pointer;
+            font-weight: 500;
+            color: #6c757d;
+            transition: all 0.3s ease;
+            border-radius: 8px 8px 0 0;
+            margin-right: 4px;
+        }
+        
+        .config-tab.active {
+            background-color: white;
+            color: #007bff;
+            border-color: #007bff;
+            border-bottom: 2px solid white;
+            margin-bottom: -2px;
+        }
+        
+        .config-tab:hover:not(.active) {
+            background-color: #e9ecef;
+            color: #495057;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
         .config-controls {
             display: flex;
             justify-content: space-between;
@@ -208,72 +248,143 @@
         <h1>Config Edit</h1>
         
         <div class="config-edit-container">
-            <div class="config-controls">
-                <div>
-                    <h3 style="margin: 0; color: #495057;">Port Assignment Configuration</h3>
-                    <p style="margin: 5px 0 0 0; color: #6c757d; font-size: 14px;">Edit the device and port assignment configuration for SSH automation</p>
+            <!-- Tab Navigation -->
+            <div class="config-tabs">
+                <div class="config-tab active" onclick="switchTab('hardware')">
+                    <span>🔧</span> Hardware List
                 </div>
-                <div class="config-actions">
-                    <button class="config-btn primary" onclick="addNewRow()">
-                        <span>➕</span> Add Row
-                    </button>
-                    <button class="config-btn success" onclick="saveChanges()" id="saveBtn">
-                        <span>💾</span> Save Changes
-                    </button>
-                    <button class="config-btn secondary" onclick="refreshData()">
-                        <span>🔄</span> Refresh
-                    </button>
+                <div class="config-tab" onclick="switchTab('port')">
+                    <span>🔌</span> Port Assignment
                 </div>
             </div>
             
-            <div id="statusMessage" class="status-message hidden"></div>
+            <!-- Hardware List Tab -->
+            <div id="hardware-tab" class="tab-content active">
+                <div class="config-controls">
+                    <div>
+                        <h3 style="margin: 0; color: #495057;">Hardware List Configuration</h3>
+                        <p style="margin: 5px 0 0 0; color: #6c757d; font-size: 14px;">Manage hardware inventory and specifications</p>
+                    </div>
+                    <div class="config-actions">
+                        <button class="config-btn primary" onclick="addNewHardwareRow()">
+                            <span>➕</span> Add Row
+                        </button>
+                        <button class="config-btn success" onclick="saveHardwareChanges()" id="saveHardwareBtn">
+                            <span>💾</span> Save Changes
+                        </button>
+                        <button class="config-btn secondary" onclick="refreshData()">
+                            <span>🔄</span> Refresh
+                        </button>
+                    </div>
+                </div>
+                
+                <div id="hardwareStatusMessage" class="status-message hidden"></div>
+                
+                <table class="config-table" id="hardwareTable">
+                    <thead>
+                        <tr>
+                            <th style="width: 45%;">Location</th>
+                            <th style="width: 45%;">IP Address</th>
+                            <th style="width: 10%;">Delete</th>
+                        </tr>
+                    </thead>
+                    <tbody id="hardwareTableBody">
+                        <!-- Data will be populated by JavaScript -->
+                    </tbody>
+                </table>
+            </div>
             
-            <table class="config-table" id="configTable">
-                <thead>
-                    <tr>
-                        <th style="width: 25%;">Device Name</th>
-                        <th style="width: 20%;">Switch Port</th>
-                        <th style="width: 25%;">Location</th>
-                        <th style="width: 25%;">SSH IP</th>
-                        <th style="width: 5%;">Delete</th>
-                    </tr>
-                </thead>
-                <tbody id="configTableBody">
-                    <!-- Data will be populated by JavaScript -->
-                </tbody>
-            </table>
+            <!-- Port Assignment Tab -->
+            <div id="port-tab" class="tab-content">
+                <div class="config-controls">
+                    <div>
+                        <h3 style="margin: 0; color: #495057;">Port Assignment Configuration</h3>
+                        <p style="margin: 5px 0 0 0; color: #6c757d; font-size: 14px;">Edit the device and port assignment configuration for SSH automation</p>
+                    </div>
+                    <div class="config-actions">
+                        <button class="config-btn primary" onclick="addNewPortRow()">
+                            <span>➕</span> Add Row
+                        </button>
+                        <button class="config-btn success" onclick="savePortChanges()" id="savePortBtn">
+                            <span>💾</span> Save Changes
+                        </button>
+                        <button class="config-btn secondary" onclick="refreshData()">
+                            <span>🔄</span> Refresh
+                        </button>
+                    </div>
+                </div>
+                
+                <div id="portStatusMessage" class="status-message hidden"></div>
+                
+                <table class="config-table" id="portTable">
+                    <thead>
+                        <tr>
+                            <th style="width: 25%;">Device Name</th>
+                            <th style="width: 20%;">Switch Port</th>
+                            <th style="width: 25%;">Location</th>
+                            <th style="width: 25%;">SSH IP</th>
+                            <th style="width: 5%;">Delete</th>
+                        </tr>
+                    </thead>
+                    <tbody id="portTableBody">
+                        <!-- Data will be populated by JavaScript -->
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
 
     <script>
         // Configuration data from server
-        const serverData = {{ df | tojson | safe }};
+        const hardwareData = {{ hardware_data | tojson | safe }};
+        const portData = {{ port_data | tojson | safe }};
         
-        let configData = serverData;
-        let originalData = JSON.parse(JSON.stringify(configData)); // Deep copy for comparison
-        let modifiedRows = new Set(); // Track which rows have been modified
+        let currentHardwareData = hardwareData;
+        let currentPortData = portData;
+        let originalHardwareData = JSON.parse(JSON.stringify(hardwareData));
+        let originalPortData = JSON.parse(JSON.stringify(portData));
+        let modifiedHardwareRows = new Set();
+        let modifiedPortRows = new Set();
 
-        // Initialize the table
-        function initializeTable() {
-            const tbody = document.getElementById('configTableBody');
+        // Tab switching functionality
+        function switchTab(tabName) {
+            // Hide all tab contents
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            // Remove active class from all tabs
+            document.querySelectorAll('.config-tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            // Show selected tab content
+            document.getElementById(tabName + '-tab').classList.add('active');
+            
+            // Add active class to clicked tab
+            event.target.classList.add('active');
+        }
+
+        // Hardware List Functions
+        function initializeHardwareTable() {
+            const tbody = document.getElementById('hardwareTableBody');
             tbody.innerHTML = '';
             
-            configData.forEach((row, index) => {
-                addRowToTable(row, index);
+            currentHardwareData.forEach((row, index) => {
+                addHardwareRowToTable(row, index);
             });
         }
 
-        // Add a row to the table
-        function addRowToTable(rowData, index) {
-            const tbody = document.getElementById('configTableBody');
+        function addHardwareRowToTable(rowData, index) {
+            const tbody = document.getElementById('hardwareTableBody');
             const tr = document.createElement('tr');
-            tr.id = `row-${index}`;
+            tr.id = `hardware-row-${index}`;
+            
+            // Hardware list has only Location and IP columns
             tr.innerHTML = `
-                <td><input type="text" value="${rowData['Unnamed: 0'] || ''}" data-field="Unnamed: 0" data-row="${index}"></td>
-                <td><input type="text" value="${rowData['Switch Port'] || ''}" data-field="Switch Port" data-row="${index}"></td>
                 <td><input type="text" value="${rowData.Location || ''}" data-field="Location" data-row="${index}"></td>
-                <td><input type="text" value="${rowData['SSH IP'] || ''}" data-field="SSH IP" data-row="${index}"></td>
-                <td><button class="delete-btn" onclick="deleteRow(${index})" title="Delete row">🗑️</button></td>
+                <td><input type="text" value="${rowData.IP || ''}" data-field="IP" data-row="${index}"></td>
+                <td><button class="delete-btn" onclick="deleteHardwareRow(${index})" title="Delete row">🗑️</button></td>
             `;
             tbody.appendChild(tr);
             
@@ -281,115 +392,98 @@
             const inputs = tr.querySelectorAll('input');
             inputs.forEach(input => {
                 input.addEventListener('input', function() {
-                    markRowAsModified(index);
+                    markHardwareRowAsModified(index);
                 });
             });
         }
 
-        // Mark a row as modified
-        function markRowAsModified(index) {
-            modifiedRows.add(index);
-            const row = document.getElementById(`row-${index}`);
+        function markHardwareRowAsModified(index) {
+            modifiedHardwareRows.add(index);
+            const row = document.getElementById(`hardware-row-${index}`);
             row.classList.add('modified-row');
             
-            // Mark individual inputs as modified
             const inputs = row.querySelectorAll('input');
             inputs.forEach(input => {
                 input.classList.add('modified');
             });
         }
 
-        // Add a new row
-        function addNewRow() {
+        function addNewHardwareRow() {
             const newRow = {
-                'Unnamed: 0': '',
-                'Switch Port': '',
                 'Location': '',
-                'SSH IP': ''
+                'IP': ''
             };
             
-            configData.push(newRow);
-            const index = configData.length - 1;
-            addRowToTable(newRow, index);
+            currentHardwareData.push(newRow);
+            const index = currentHardwareData.length - 1;
+            addHardwareRowToTable(newRow, index);
             
-            // Mark as new row
-            const row = document.getElementById(`row-${index}`);
+            const row = document.getElementById(`hardware-row-${index}`);
             row.classList.add('new-row');
-            modifiedRows.add(index);
+            modifiedHardwareRows.add(index);
             
-            // Scroll to the new row
             row.scrollIntoView({ behavior: 'smooth' });
-            
-            // Focus on the first input
             const firstInput = row.querySelector('input');
             firstInput.focus();
         }
 
-        // Delete a row
-        function deleteRow(index) {
+        function deleteHardwareRow(index) {
             if (confirm('Are you sure you want to delete this row?')) {
-                configData.splice(index, 1);
-                document.getElementById(`row-${index}`).remove();
-                modifiedRows.delete(index);
+                currentHardwareData.splice(index, 1);
+                document.getElementById(`hardware-row-${index}`).remove();
+                modifiedHardwareRows.delete(index);
                 
                 // Re-index remaining rows
-                const tbody = document.getElementById('configTableBody');
+                const tbody = document.getElementById('hardwareTableBody');
                 const rows = tbody.querySelectorAll('tr');
                 rows.forEach((row, newIndex) => {
-                    row.id = `row-${newIndex}`;
+                    row.id = `hardware-row-${newIndex}`;
                     
-                    // Update data-row attributes
                     const inputs = row.querySelectorAll('input');
                     inputs.forEach(input => {
                         input.setAttribute('data-row', newIndex);
                     });
                     
-                    // Update delete button onclick
                     const deleteBtn = row.querySelector('.delete-btn');
                     if (deleteBtn) {
-                        deleteBtn.setAttribute('onclick', `deleteRow(${newIndex})`);
+                        deleteBtn.setAttribute('onclick', `deleteHardwareRow(${newIndex})`);
                     }
                 });
                 
-                showStatus('Row deleted successfully.', 'success');
+                showHardwareStatus('Row deleted successfully.', 'success');
             }
         }
 
-        // Save all changes
-        async function saveChanges() {
-            // Update configData with current input values
-            const tbody = document.getElementById('configTableBody');
+        async function saveHardwareChanges() {
+            const tbody = document.getElementById('hardwareTableBody');
             const rows = tbody.querySelectorAll('tr');
             
             rows.forEach((row, index) => {
                 const inputs = row.querySelectorAll('input');
                 inputs.forEach(input => {
                     const field = input.getAttribute('data-field');
-                    configData[index][field] = input.value.trim();
+                    currentHardwareData[index][field] = input.value.trim();
                 });
             });
             
-            // No validation - allow empty rows
-            
             try {
-                const response = await fetch('/api/config/edit', {
+                const response = await fetch('/api/config/edit_hardware', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
                     body: JSON.stringify({
-                        data: configData
+                        data: currentHardwareData
                     })
                 });
                 
                 const result = await response.json();
                 
                 if (response.ok) {
-                    showStatus('Configuration saved successfully!', 'success');
-                    originalData = JSON.parse(JSON.stringify(configData)); // Update original data
-                    modifiedRows.clear();
+                    showHardwareStatus('Hardware configuration saved successfully!', 'success');
+                    originalHardwareData = JSON.parse(JSON.stringify(currentHardwareData));
+                    modifiedHardwareRows.clear();
                     
-                    // Remove modified styling
                     const rows = tbody.querySelectorAll('tr');
                     rows.forEach(row => {
                         row.classList.remove('modified-row', 'new-row');
@@ -399,16 +493,172 @@
                         });
                     });
                 } else {
-                    showStatus(`Error saving configuration: ${result.message || 'Unknown error'}`, 'error');
+                    showHardwareStatus(`Error saving hardware configuration: ${result.message || 'Unknown error'}`, 'error');
                 }
             } catch (error) {
-                showStatus(`Error saving configuration: ${error.message}`, 'error');
+                showHardwareStatus(`Error saving hardware configuration: ${error.message}`, 'error');
             }
         }
 
-        // Refresh data
+        function showHardwareStatus(message, type) {
+            const statusDiv = document.getElementById('hardwareStatusMessage');
+            statusDiv.textContent = message;
+            statusDiv.className = `status-message status-${type}`;
+            statusDiv.classList.remove('hidden');
+            
+            setTimeout(() => {
+                statusDiv.classList.add('hidden');
+            }, 5000);
+        }
+
+        // Port Assignment Functions
+        function initializePortTable() {
+            const tbody = document.getElementById('portTableBody');
+            tbody.innerHTML = '';
+            
+            currentPortData.forEach((row, index) => {
+                addPortRowToTable(row, index);
+            });
+        }
+
+        function addPortRowToTable(rowData, index) {
+            const tbody = document.getElementById('portTableBody');
+            const tr = document.createElement('tr');
+            tr.id = `port-row-${index}`;
+            tr.innerHTML = `
+                <td><input type="text" value="${rowData['Unnamed: 0'] || ''}" data-field="Unnamed: 0" data-row="${index}"></td>
+                <td><input type="text" value="${rowData['Switch Port'] || ''}" data-field="Switch Port" data-row="${index}"></td>
+                <td><input type="text" value="${rowData.Location || ''}" data-field="Location" data-row="${index}"></td>
+                <td><input type="text" value="${rowData['SSH IP'] || ''}" data-field="SSH IP" data-row="${index}"></td>
+                <td><button class="delete-btn" onclick="deletePortRow(${index})" title="Delete row">🗑️</button></td>
+            `;
+            tbody.appendChild(tr);
+            
+            const inputs = tr.querySelectorAll('input');
+            inputs.forEach(input => {
+                input.addEventListener('input', function() {
+                    markPortRowAsModified(index);
+                });
+            });
+        }
+
+        function markPortRowAsModified(index) {
+            modifiedPortRows.add(index);
+            const row = document.getElementById(`port-row-${index}`);
+            row.classList.add('modified-row');
+            
+            const inputs = row.querySelectorAll('input');
+            inputs.forEach(input => {
+                input.classList.add('modified');
+            });
+        }
+
+        function addNewPortRow() {
+            const newRow = {
+                'Unnamed: 0': '',
+                'Switch Port': '',
+                'Location': '',
+                'SSH IP': ''
+            };
+            
+            currentPortData.push(newRow);
+            const index = currentPortData.length - 1;
+            addPortRowToTable(newRow, index);
+            
+            const row = document.getElementById(`port-row-${index}`);
+            row.classList.add('new-row');
+            modifiedPortRows.add(index);
+            
+            row.scrollIntoView({ behavior: 'smooth' });
+            const firstInput = row.querySelector('input');
+            firstInput.focus();
+        }
+
+        function deletePortRow(index) {
+            if (confirm('Are you sure you want to delete this row?')) {
+                currentPortData.splice(index, 1);
+                document.getElementById(`port-row-${index}`).remove();
+                modifiedPortRows.delete(index);
+                
+                const tbody = document.getElementById('portTableBody');
+                const rows = tbody.querySelectorAll('tr');
+                rows.forEach((row, newIndex) => {
+                    row.id = `port-row-${newIndex}`;
+                    
+                    const inputs = row.querySelectorAll('input');
+                    inputs.forEach(input => {
+                        input.setAttribute('data-row', newIndex);
+                    });
+                    
+                    const deleteBtn = row.querySelector('.delete-btn');
+                    if (deleteBtn) {
+                        deleteBtn.setAttribute('onclick', `deletePortRow(${newIndex})`);
+                    }
+                });
+                
+                showPortStatus('Row deleted successfully.', 'success');
+            }
+        }
+
+        async function savePortChanges() {
+            const tbody = document.getElementById('portTableBody');
+            const rows = tbody.querySelectorAll('tr');
+            
+            rows.forEach((row, index) => {
+                const inputs = row.querySelectorAll('input');
+                inputs.forEach(input => {
+                    const field = input.getAttribute('data-field');
+                    currentPortData[index][field] = input.value.trim();
+                });
+            });
+            
+            try {
+                const response = await fetch('/api/config/edit', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        data: currentPortData
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    showPortStatus('Port configuration saved successfully!', 'success');
+                    originalPortData = JSON.parse(JSON.stringify(currentPortData));
+                    modifiedPortRows.clear();
+                    
+                    const rows = tbody.querySelectorAll('tr');
+                    rows.forEach(row => {
+                        row.classList.remove('modified-row', 'new-row');
+                        const inputs = row.querySelectorAll('input');
+                        inputs.forEach(input => {
+                            input.classList.remove('modified');
+                        });
+                    });
+                } else {
+                    showPortStatus(`Error saving port configuration: ${result.message || 'Unknown error'}`, 'error');
+                }
+            } catch (error) {
+                showPortStatus(`Error saving port configuration: ${error.message}`, 'error');
+            }
+        }
+
+        function showPortStatus(message, type) {
+            const statusDiv = document.getElementById('portStatusMessage');
+            statusDiv.textContent = message;
+            statusDiv.className = `status-message status-${type}`;
+            statusDiv.classList.remove('hidden');
+            
+            setTimeout(() => {
+                statusDiv.classList.add('hidden');
+            }, 5000);
+        }
+
         function refreshData() {
-            if (modifiedRows.size > 0) {
+            if (modifiedHardwareRows.size > 0 || modifiedPortRows.size > 0) {
                 if (confirm('You have unsaved changes. Are you sure you want to refresh and lose your changes?')) {
                     location.reload();
                 }
@@ -417,22 +667,10 @@
             }
         }
 
-        // Show status message
-        function showStatus(message, type) {
-            const statusDiv = document.getElementById('statusMessage');
-            statusDiv.textContent = message;
-            statusDiv.className = `status-message status-${type}`;
-            statusDiv.classList.remove('hidden');
-            
-            // Auto-hide after 5 seconds
-            setTimeout(() => {
-                statusDiv.classList.add('hidden');
-            }, 5000);
-        }
-
-        // Initialize the table when page loads
+        // Initialize tables when page loads
         document.addEventListener('DOMContentLoaded', function() {
-            initializeTable();
+            initializeHardwareTable();
+            initializePortTable();
         });
     </script>
 </body>
