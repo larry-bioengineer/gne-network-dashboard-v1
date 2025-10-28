@@ -10,7 +10,7 @@ import socket
 from dotenv import load_dotenv
 from service.SSHConnection import reset_port_poe, retrieve_ssh_info_from_config
 import requests
-import datetime
+from datetime import datetime
 
 from api.util import log
 
