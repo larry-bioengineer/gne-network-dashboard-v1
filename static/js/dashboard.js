@@ -1,9 +1,65 @@
+// Tracking variables for auto-refresh
+let isLoading = false;
+let autoRefreshInterval = null;
+let autoRefreshIntervalSeconds = 20; // Default to 20 seconds
+
 // Load data when page loads
 document.addEventListener('DOMContentLoaded', function() {
     loadData();
+    
+    // Start auto-refresh interval
+    startAutoRefresh();
 });
 
+function startAutoRefresh() {
+    // Clear any existing interval
+    if (autoRefreshInterval) {
+        clearInterval(autoRefreshInterval);
+    }
+    
+    // Set interval to check and reload data
+    autoRefreshInterval = setInterval(async function() {
+        // If currently loading, skip this round
+        if (isLoading) {
+            console.log('Still loading, skipping this refresh cycle');
+            return;
+        }
+        
+        // Check if status checks are complete by looking for any "Checking..." status
+        const allStatusComplete = checkAllStatusComplete();
+        
+        if (!allStatusComplete) {
+            console.log('Status checks not complete, skipping this refresh cycle');
+            return;
+        }
+        
+        // All done, trigger reload
+        console.log('Triggering auto-refresh...');
+        loadData();
+    }, autoRefreshIntervalSeconds * 1000);
+}
+
+function checkAllStatusComplete() {
+    // Check all status elements to see if any are still "Checking..."
+    const statusElements = document.querySelectorAll('.status-indicator');
+    
+    for (let statusElement of statusElements) {
+        const statusText = statusElement.querySelector('.status-text');
+        if (statusText && statusText.textContent === 'Checking...') {
+            return false; // Still checking
+        }
+    }
+    
+    return true; // All complete
+}
+
 async function loadData() {
+    if (isLoading) {
+        console.log('Already loading, skipping duplicate request');
+        return;
+    }
+    
+    isLoading = true;
     const loading = document.getElementById('loading');
     const error = document.getElementById('error');
     const table = document.getElementById('dataTable');
@@ -87,14 +143,16 @@ async function loadData() {
         loading.style.display = 'none';
         table.style.display = 'table';
         
-        // Start pinging all IPs to check their status
-        pingAllStatuses();
+        // Start pinging all IPs to check their status and wait for completion
+        await pingAllStatuses();
         
     } catch (err) {
         console.error('Error loading data:', err);
         loading.style.display = 'none';
         error.style.display = 'block';
         error.textContent = 'Error loading data: ' + err.message;
+    } finally {
+        isLoading = false;
     }
 }
 
