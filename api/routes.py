@@ -9,6 +9,8 @@ import json
 import socket
 from dotenv import load_dotenv
 from service.SSHConnection import reset_port_poe, retrieve_ssh_info_from_config
+import requests
+import datetime
 
 from api.util import log
 
@@ -1218,6 +1220,23 @@ def reset_down_port_only_sse():
                     completion_message = f"Reset Down Port Only completed: {successful_resets} ports reset ({verified_count} verified, {unverified_count} still unreachable) out of {total_down} unreachable locations"
                 else:
                     completion_message = f"Reset Down Port Only completed: {successful_resets} ports reset but none verified as reachable out of {total_down} unreachable locations"
+
+                # make a post request to issue reporting with an Authorization header
+                if verified_count != successful_resets:
+                    issue_reporting_token = os.getenv('ISSUE_REPORTING_TOKEN', '')
+                    headers = {'Authorization': f"Bearer {issue_reporting_token}"} if issue_reporting_token else {}
+                    resp = requests.post(
+                        f"{os.getenv('ISSUE_REPORTING_URL')}",
+                        json={
+                        "organizationID": os.getenv('ORGANIZATION_ID', ''),
+                        "description": "One or more AP may be down - " + datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        "locationID": os.getenv('LOCATION_ID', ''),
+                        "productType": "WiFi/AP",
+                        "emails": ["cepo.larry@gmail.com"]
+                    },
+                        headers=headers
+                    )
+
                 yield f"data: {json.dumps({'type': 'complete', 'success': True, 'message': completion_message, 'timestamp': time.time()})}\n\n"
             else:
                 completion_message = f"Reset Down Port Only completed: No ports needed resetting ({total_checked} locations checked)"
