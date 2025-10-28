@@ -1194,6 +1194,7 @@ def reset_down_port_only_sse():
                 
                 # Now verify all reset ports
                 verified_count = 0
+                failedReset = []
                 for reset_entry in reset_successful:
                     location = reset_entry['location']
                     ip_address = reset_entry['ip']
@@ -1209,6 +1210,7 @@ def reset_down_port_only_sse():
                         yield f"data: {json.dumps({'type': 'verification_success', 'message': f'{location} is now reachable after reset', 'location': location, 'timestamp': time.time()})}\n\n"
                     else:
                         reset_entry['verified'] = False
+                        failedReset.append({'location': location})
                         log.log_to_file(f"Reset Down Port Only: Ping failed for {location} ({ip_address})", 'ERROR')
                         yield f"data: {json.dumps({'type': 'verification_failed', 'message': f'{location} is still unreachable after reset', 'location': location, 'timestamp': time.time()})}\n\n"
                 
@@ -1222,20 +1224,25 @@ def reset_down_port_only_sse():
                     completion_message = f"Reset Down Port Only completed: {successful_resets} ports reset but none verified as reachable out of {total_down} unreachable locations"
 
                 # make a post request to issue reporting with an Authorization header
-                if verified_count != successful_resets:
+                if len(failedReset) > 0:
                     issue_reporting_token = os.getenv('ISSUE_REPORTING_TOKEN', '')
                     headers = {'Authorization': f"Bearer {issue_reporting_token}"} if issue_reporting_token else {}
                     resp = requests.post(
                         f"{os.getenv('ISSUE_REPORTING_URL')}",
                         json={
                         "organizationID": os.getenv('ORGANIZATION_ID', ''),
-                        "description": "One or more AP may be down - " + datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        "description": "One or more AP may be down - " + datetime.now().strftime("%Y-%m-%d %H:%M:%S") + "\nIncluding: " + ",".join([f"{r['location']}" for r in failedReset]),
                         "locationID": os.getenv('LOCATION_ID', ''),
                         "productType": "WiFi/AP",
                         "emails": ["cepo.larry@gmail.com"]
                     },
                         headers=headers
                     )
+
+                    if resp.status_code == 200:
+                        yield f"data: {json.dumps({'type': 'issue_reporting_success', 'message': 'Issue reporting successful', 'timestamp': time.time()})}\n\n"
+                    else:
+                        yield f"data: {json.dumps({'type': 'issue_reporting_error', 'message': 'Issue reporting failed', 'timestamp': time.time()})}\n\n"
 
                 yield f"data: {json.dumps({'type': 'complete', 'success': True, 'message': completion_message, 'timestamp': time.time()})}\n\n"
             else:
