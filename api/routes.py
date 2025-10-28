@@ -1234,7 +1234,7 @@ def reset_down_port_only_sse():
                         "description": "One or more AP may be down - " + datetime.now().strftime("%Y-%m-%d %H:%M:%S") + "\nIncluding: " + ",".join([f"{r['location']}" for r in failedReset]),
                         "locationID": os.getenv('LOCATION_ID', ''),
                         "productType": "WiFi/AP",
-                        "emails": ["cepo.larry@gmail.com"]
+                        "emails": json.dumps([s for s in os.getenv('ISSUE_REPORT_EMAIL', '').split(',') if s.strip()])
                     },
                         headers=headers
                     )
